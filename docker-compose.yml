@@ -1,0 +1,419 @@
+name: artham-live
+
+services:
+  postgres:
+    image: timescale/timescaledb:2.22.0-pg17
+    command: postgres -c max_locks_per_transaction=1024 -c max_worker_processes=16 -c max_parallel_workers=8 -c max_parallel_workers_per_gather=4 -c timescaledb.max_background_workers=8
+    container_name: artham_00_postgres
+    environment:
+      TZ: Asia/Kolkata
+      POSTGRES_USER: ${POSTGRES_USER:-postgres}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-password}
+      POSTGRES_DB: artham
+      # Optionally, you can also set PGOPTIONS here if needed
+      # PGOPTIONS: "-c max_worker_processes=16 -c max_parallel_workers=8 -c max_parallel_workers_per_gather=4 -c timescaledb.max_background_workers=8"
+    ports:
+      - "5432:5432"
+    volumes:
+      - ./postgres-init:/docker-entrypoint-initdb.d:ro
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: [ "CMD-SHELL", "pg_isready -U $$POSTGRES_USER" ]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    networks:
+      - artham_net
+    deploy:
+      resources:
+        limits:
+          cpus: '4'
+          memory: 4G
+        reservations:
+          cpus: '4'
+          memory: 4G
+
+  redis:
+    image: redis:8.4.0
+    container_name: artham_00_redis
+    command: [ "redis-server", "--appendonly", "yes" ]
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis_data:/data
+    healthcheck:
+      test: [ "CMD-SHELL", "redis-cli -h 127.0.0.1 -p 6379 ping | grep -q PONG" ]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+      start_period: 5s
+    networks:
+      - artham_net
+
+  prometheus:
+    image: prom/prometheus:v2.54.1
+    container_name: artham_00_prometheus
+    ports:
+      - "9090:9090"
+    volumes:
+      - ./services_web/prometheus.yml:/etc/prometheus/prometheus.yml:ro
+      - prometheus_data:/prometheus
+    depends_on:
+      - tick_ingestor
+      - tick_store
+      - bar_builder
+      - bar_store
+      - order_broker_adapter
+      - order_command_service
+      - order_risk_manager
+      - order_state_manager
+      - order_execution_engine
+    networks:
+      - artham_net
+
+  grafana:
+    image: grafana/grafana:10.4.4
+    container_name: artham_00_grafana
+    ports:
+      - "3000:3000"
+    environment:
+      - TZ=Asia/Kolkata
+      - GF_PATHS_PROVISIONING=/etc/grafana/provisioning
+      - GF_SECURITY_ADMIN_USER=admin
+      - GF_SECURITY_ADMIN_PASSWORD=admin
+    volumes:
+      - ./services_web/grafana.ini:/etc/grafana/grafana.ini:ro
+      - ./services_web/provisioning:/etc/grafana/provisioning:ro
+      - grafana_data:/var/lib/grafana
+    depends_on:
+      - prometheus
+    networks:
+      - artham_net
+
+  tick_ingestor:
+    build:
+      context: .
+      dockerfile: services/Dockerfile
+    image: artham_tick_01_ingestor:latest
+    container_name: artham_tick_01_ingestor
+    command: [ "python", "tick_01_ingestor.py" ]
+    env_file:
+      - ./services/.env
+    environment:
+      TZ: Asia/Kolkata
+      DIR_LOGS: /logs
+      POSTGRES_HOST: postgres
+      POSTGRES_PORT: 5432
+      POSTGRES_DB: artham
+      REDIS_HOST: redis
+      REDIS_PORT: 6379
+    ports:
+      - "9201:9201"
+    volumes:
+      - logs_data:/logs
+    restart: unless-stopped
+    depends_on:
+      redis:
+        condition: service_healthy
+      postgres:
+        condition: service_healthy
+    networks:
+      - artham_net
+
+  tick_store:
+    build:
+      context: .
+      dockerfile: services/Dockerfile
+    image: artham_tick_02_store:latest
+    container_name: artham_tick_02_store
+    command: [ "python", "tick_02_store.py" ]
+    env_file:
+      - ./services/.env
+    environment:
+      TZ: Asia/Kolkata
+      DIR_LOGS: /logs
+      REDIS_HOST: redis
+      REDIS_PORT: 6379
+      POSTGRES_HOST: postgres
+      POSTGRES_PORT: 5432
+      POSTGRES_DB: artham
+    ports:
+      - "9202:9202"
+    volumes:
+      - logs_data:/logs
+    depends_on:
+      redis:
+        condition: service_healthy
+      postgres:
+        condition: service_healthy
+    networks:
+      - artham_net
+
+  bar_builder:
+    build:
+      context: .
+      dockerfile: services/Dockerfile
+    image: artham_bar_01_builder:latest
+    container_name: artham_bar_01_builder
+    command: [ "python", "bar_01_builder.py" ]
+    env_file:
+      - ./services/.env
+    environment:
+      TZ: Asia/Kolkata
+      DIR_LOGS: /logs
+      REDIS_HOST: redis
+      REDIS_PORT: 6379
+      POSTGRES_HOST: postgres
+      POSTGRES_PORT: 5432
+      POSTGRES_DB: artham
+    ports:
+      - "9203:9203"
+    volumes:
+      - logs_data:/logs
+    depends_on:
+      redis:
+        condition: service_healthy
+      postgres:
+        condition: service_healthy
+    networks:
+      - artham_net
+
+  bar_store:
+    build:
+      context: .
+      dockerfile: services/Dockerfile
+    image: artham_bar_02_store:latest
+    container_name: artham_bar_02_store
+    command: [ "python", "bar_02_store.py" ]
+    env_file:
+      - ./services/.env
+    environment:
+      TZ: Asia/Kolkata
+      DIR_LOGS: /logs
+      REDIS_HOST: redis
+      REDIS_PORT: 6379
+      POSTGRES_HOST: postgres
+      POSTGRES_PORT: 5432
+      POSTGRES_DB: artham
+    ports:
+      - "9204:9204"
+    volumes:
+      - logs_data:/logs
+    depends_on:
+      redis:
+        condition: service_healthy
+      postgres:
+        condition: service_healthy
+    networks:
+      - artham_net
+
+  order_broker_adapter:
+    build:
+      context: .
+      dockerfile: services/Dockerfile
+    image: artham_order_01_broker_adapter:latest
+    container_name: artham_order_01_broker_adapter
+    command: [ "python", "order_01_broker_adapter.py" ]
+    env_file:
+      - ./services/.env
+    environment:
+      TZ: Asia/Kolkata
+      DIR_LOGS: /logs
+      REDIS_HOST: redis
+      REDIS_PORT: 6379
+    ports:
+      - "9205:9205"
+    volumes:
+      - logs_data:/logs
+    restart: unless-stopped
+    depends_on:
+      redis:
+        condition: service_healthy
+    networks:
+      - artham_net
+
+  order_command_service:
+    build:
+      context: .
+      dockerfile: services/Dockerfile
+    image: artham_order_02_command_service:latest
+    container_name: artham_order_02_command_service
+    command: [ "python", "order_02_command_service.py" ]
+    env_file:
+      - ./services/.env
+    environment:
+      TZ: Asia/Kolkata
+      DIR_LOGS: /logs
+      REDIS_HOST: redis
+      REDIS_PORT: 6379
+      ORDER_COMMAND_METRICS_PORT: 9210
+    ports:
+      - "9206:9206"
+    volumes:
+      - logs_data:/logs
+    restart: unless-stopped
+    depends_on:
+      redis:
+        condition: service_healthy
+    networks:
+      - artham_net
+
+  order_risk_manager:
+    build:
+      context: .
+      dockerfile: services/Dockerfile
+    image: artham_order_03_risk_manager:latest
+    container_name: artham_order_03_risk_manager
+    command: [ "python", "order_03_risk_manager.py" ]
+    env_file:
+      - ./services/.env
+    environment:
+      TZ: Asia/Kolkata
+      DIR_LOGS: /logs
+      REDIS_HOST: redis
+      REDIS_PORT: 6379
+    ports:
+      - "9207:9207"
+    volumes:
+      - logs_data:/logs
+    restart: unless-stopped
+    depends_on:
+      redis:
+        condition: service_healthy
+    networks:
+      - artham_net
+
+  order_state_manager:
+    build:
+      context: .
+      dockerfile: services/Dockerfile
+    image: artham_order_04_state_manager:latest
+    container_name: artham_order_04_state_manager
+    command: [ "python", "order_04_state_manager.py" ]
+    env_file:
+      - ./services/.env
+    environment:
+      TZ: Asia/Kolkata
+      DIR_LOGS: /logs
+      REDIS_HOST: redis
+      REDIS_PORT: 6379
+    ports:
+      - "9208:9208"
+    volumes:
+      - logs_data:/logs
+    restart: unless-stopped
+    depends_on:
+      redis:
+        condition: service_healthy
+    networks:
+      - artham_net
+
+  order_execution_engine:
+    build:
+      context: .
+      dockerfile: services/Dockerfile
+    image: artham_order_05_execution_engine:latest
+    container_name: artham_order_05_execution_engine
+    command: [ "python", "order_05_execution_engine.py" ]
+    env_file:
+      - ./services/.env
+    environment:
+      TZ: Asia/Kolkata
+      DIR_LOGS: /logs
+      REDIS_HOST: redis
+      REDIS_PORT: 6379
+    ports:
+      - "9209:9209"
+    volumes:
+      - logs_data:/logs
+    restart: unless-stopped
+    depends_on:
+      redis:
+        condition: service_healthy
+    networks:
+      - artham_net
+
+  user_api:
+    build:
+      context: ./user_api
+      dockerfile: Dockerfile
+    image: artham_user_01_api:latest
+    container_name: artham_user_01_api
+    command: [ "uvicorn", "main:app", "--host", "0.0.0.0", "--port", "8000" ]
+    env_file:
+      - ./user_api/.env
+    environment:
+      TZ: Asia/Kolkata
+      POSTGRES_HOST: postgres
+      POSTGRES_PORT: 5432
+      POSTGRES_DB: artham
+      REDIS_HOST: redis
+      REDIS_PORT: 6379
+      DIR_LOGS: /logs
+    volumes:
+      - ./__library:/app/__library:ro
+      - logs_data:/logs
+    ports:
+      - "8000:8000"
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    networks:
+      - artham_net
+
+  user_web:
+    build:
+      context: ./user_web
+      dockerfile: Dockerfile
+    image: artham_user_02_web:latest
+    container_name: artham_user_02_web
+    ports:
+      - "8080:80"
+    depends_on:
+      - user_api
+    networks:
+      - artham_net
+
+networks:
+  artham_net:
+    driver: bridge
+    name: artham_network
+
+volumes:
+  postgres_data:
+    driver: local
+    driver_opts:
+      type: none
+      o: bind
+      device: ${VOLUMES_BASE_PATH}/postgres
+    name: postgres_volume
+  redis_data:
+    driver: local
+    driver_opts:
+      type: none
+      o: bind
+      device: ${VOLUMES_BASE_PATH}/redis
+    name: redis_volume
+  prometheus_data:
+    driver: local
+    driver_opts:
+      type: none
+      o: bind
+      device: ${VOLUMES_BASE_PATH}/prometheus
+    name: prometheus_volume
+  grafana_data:
+    driver: local
+    driver_opts:
+      type: none
+      o: bind
+      device: ${VOLUMES_BASE_PATH}/grafana
+    name: grafana_volume
+  logs_data:
+    driver: local
+    driver_opts:
+      type: none
+      o: bind
+      device: ${VOLUMES_BASE_PATH}/logs
+    name: logs_volume

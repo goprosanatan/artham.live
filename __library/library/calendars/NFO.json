@@ -1,0 +1,69 @@
+{
+  "exchange": "NFO",
+  "timezone": "Asia/Kolkata",
+  "sessions": {
+    "regular": {
+      "enabled": true,
+      "days": [1, 2, 3, 4, 5],
+      "open": "09:15",
+      "close": "15:30"
+    }
+  },
+  "session_overrides": {
+    "2026-01-15": {
+      "regular": "closed"
+    },
+    "2026-01-26": {
+      "regular": "closed"
+    },
+    "2026-03-03": {
+      "regular": "closed"
+    },
+    "2026-03-26": {
+      "regular": "closed"
+    },
+    "2026-03-31": {
+      "regular": "closed"
+    },
+    "2026-04-03": {
+      "regular": "closed"
+    },
+    "2026-04-14": {
+      "regular": "closed"
+    },
+    "2026-05-01": {
+      "regular": "closed"
+    },
+    "2026-05-28": {
+      "regular": "closed"
+    },
+    "2026-06-26": {
+      "regular": "closed"
+    },
+    "2026-09-14": {
+      "regular": "closed"
+    },
+    "2026-10-02": {
+      "regular": "closed"
+    },
+    "2026-10-20": {
+      "regular": "closed"
+    },
+    "2026-11-10": {
+      "regular": "closed"
+    },
+    "2026-11-24": {
+      "regular": "closed"
+    },
+    "2026-12-25": {
+      "regular": "closed"
+    },
+    "2026-11-08": {
+      "regular": {
+        "open": "18:15",
+        "close": "19:15"
+      }
+    }
+  },
+  "half_days": []
+}

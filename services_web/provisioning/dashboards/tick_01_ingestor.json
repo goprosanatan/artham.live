@@ -1,0 +1,61 @@
+{
+  "title": "Tick 01 - Ingestor",
+  "uid": "tick-01-ingestor",
+  "timezone": "browser",
+  "schemaVersion": 39,
+  "version": 1,
+  "refresh": "",
+  "tags": ["feed", "kite", "prometheus"],
+  "editable": false,
+  "panels": [
+    {
+      "type": "stat",
+      "title": "Kite Connected",
+      "gridPos": {"h": 7, "w": 6, "x": 0, "y": 0},
+      "datasource": "Prometheus",
+      "id": 1,
+      "targets": [{"expr": "ingestor_connected", "refId": "A", "legendFormat": "{{service}}"}]
+    },
+    {
+      "type": "stat",
+      "title": "Errors (5m)",
+      "gridPos": {"h": 7, "w": 6, "x": 0, "y": 7},
+      "datasource": "Prometheus",
+      "id": 4,
+      "targets": [{"expr": "increase(ingestor_errors_total[5m])", "refId": "A", "legendFormat": "Errors"}]
+    },
+    {
+      "type": "timeseries",
+      "title": "Ticks Received/sec",
+      "gridPos": {"h": 7, "w": 12, "x": 6, "y": 0},
+      "datasource": "Prometheus",
+      "id": 2,
+      "targets": [{"expr": "rate(ingestor_ticks_total[1m])", "refId": "A", "legendFormat": "Ticks/sec"}]
+    },
+    {
+      "type": "timeseries",
+      "title": "Ticks Published/sec",
+      "gridPos": {"h": 7, "w": 12, "x": 6, "y": 7},
+      "datasource": "Prometheus",
+      "id": 3,
+      "targets": [{"expr": "rate(ingestor_publish_total[1m])", "refId": "A", "legendFormat": "Published/sec"}]
+    },
+    {
+      "type": "timeseries",
+      "title": "Latency p95 (seconds)",
+      "gridPos": {"h": 7, "w": 12, "x": 0, "y": 14},
+      "datasource": "Prometheus",
+      "id": 6,
+      "targets": [{"expr": "histogram_quantile(0.95, sum(rate(ingestor_latency_seconds_bucket[5m])) by (le))", "refId": "A", "legendFormat": "p95 latency"}]
+    },
+    {
+      "type": "timeseries",
+      "title": "Latency p50 (seconds)",
+      "gridPos": {"h": 7, "w": 12, "x": 12, "y": 14},
+      "datasource": "Prometheus",
+      "id": 7,
+      "targets": [{"expr": "histogram_quantile(0.50, sum(rate(ingestor_latency_seconds_bucket[5m])) by (le))", "refId": "A", "legendFormat": "p50 latency"}]
+    }
+  ],
+  "time": {"from": "now-1h", "to": "now"}
+}

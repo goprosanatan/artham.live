@@ -1,0 +1,96 @@
+{
+  "title": "Order 01 - Broker Adapter",
+  "uid": "order-01-broker-adapter",
+  "timezone": "browser",
+  "schemaVersion": 39,
+  "version": 1,
+  "refresh": "5s",
+  "tags": ["orders", "broker", "prometheus"],
+  "editable": true,
+  "panels": [
+    {
+      "type": "stat",
+      "title": "Broker Connected",
+      "gridPos": {"h": 8, "w": 6, "x": 0, "y": 0},
+      "datasource": "Prometheus",
+      "id": 1,
+      "targets": [{"expr": "broker_connected", "refId": "A", "legendFormat": "Connected"}],
+      "fieldConfig": {
+        "defaults": {
+          "color": {"mode": "thresholds"},
+          "thresholds": {"mode": "absolute", "steps": [{"color": "red", "value": null}, {"color": "green", "value": 1}]}
+        }
+      }
+    },
+    {
+      "type": "stat",
+      "title": "Orders Placed (5m)",
+      "gridPos": {"h": 8, "w": 6, "x": 6, "y": 0},
+      "datasource": "Prometheus",
+      "id": 2,
+      "targets": [{"expr": "increase(broker_orders_placed_total[5m])", "refId": "A", "legendFormat": "Placed"}]
+    },
+    {
+      "type": "stat",
+      "title": "Orders Failed (5m)",
+      "gridPos": {"h": 8, "w": 6, "x": 12, "y": 0},
+      "datasource": "Prometheus",
+      "id": 3,
+      "targets": [{"expr": "increase(broker_orders_failed_total[5m])", "refId": "A", "legendFormat": "Failed"}],
+      "fieldConfig": {
+        "defaults": {
+          "color": {"mode": "thresholds"},
+          "thresholds": {"mode": "absolute", "steps": [{"color": "green", "value": null}, {"color": "red", "value": 1}]}
+        }
+      }
+    },
+    {
+      "type": "timeseries",
+      "title": "Commands Read/sec",
+      "gridPos": {"h": 8, "w": 8, "x": 0, "y": 8},
+      "datasource": "Prometheus",
+      "id": 4,
+      "targets": [{"expr": "rate(broker_commands_read_total[1m])", "refId": "A", "legendFormat": "Commands/sec"}]
+    },
+    {
+      "type": "timeseries",
+      "title": "Broker Updates Published/sec",
+      "gridPos": {"h": 8, "w": 8, "x": 8, "y": 8},
+      "datasource": "Prometheus",
+      "id": 5,
+      "targets": [{"expr": "rate(broker_updates_published_total[1m])", "refId": "A", "legendFormat": "Updates/sec"}]
+    },
+    {
+      "type": "timeseries",
+      "title": "Order Placement Latency p95 (seconds)",
+      "gridPos": {"h": 8, "w": 8, "x": 16, "y": 8},
+      "datasource": "Prometheus",
+      "id": 6,
+      "targets": [{"expr": "histogram_quantile(0.95, sum(rate(broker_latency_seconds_bucket[5m])) by (le))", "refId": "A", "legendFormat": "p95"}]
+    },
+    {
+      "type": "timeseries",
+      "title": "Errors by Type",
+      "gridPos": {"h": 8, "w": 12, "x": 0, "y": 16},
+      "datasource": "Prometheus",
+      "id": 7,
+      "targets": [{"expr": "increase(broker_errors_total[5m])", "refId": "A", "legendFormat": "{{error_type}}"}]
+    },
+    {
+      "type": "stat",
+      "title": "Commands Acked (5m)",
+      "gridPos": {"h": 8, "w": 6, "x": 12, "y": 16},
+      "datasource": "Prometheus",
+      "id": 8,
+      "targets": [{"expr": "increase(broker_commands_acked_total[5m])", "refId": "A", "legendFormat": "Acked"}]
+    },
+    {
+      "type": "stat",
+      "title": "Updates Received (5m)",
+      "gridPos": {"h": 8, "w": 6, "x": 18, "y": 16},
+      "datasource": "Prometheus",
+      "id": 9,
+      "targets": [{"expr": "increase(broker_updates_received_total[5m])", "refId": "A", "legendFormat": "Received"}]
+    }
+  ]
+}

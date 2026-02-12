@@ -1,0 +1,12 @@
+apiVersion: 1
+
+datasources:
+  - name: Prometheus
+    type: prometheus
+    access: proxy
+    url: http://artham_00_prometheus:9090
+    isDefault: true
+    jsonData:
+      timeInterval: 5s
+    editable: true
+  # Loki datasource (optional) can be added when Loki is deployed in the stack

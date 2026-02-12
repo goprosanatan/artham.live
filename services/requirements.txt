@@ -1,0 +1,9 @@
+redis==5.0.0
+prometheus-client==0.20.0
+kiteconnect==4.1.0
+numpy==1.26.4
+pandas==2.1.0
+python-decouple==3.8
+flatten-json==0.1.14
+psycopg[binary]==3.2.1
+pydantic==2.6.0

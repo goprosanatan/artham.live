@@ -1,0 +1,9 @@
+[project]
+name = "library"
+version = "0.1.0"
+description = "Common library for FastAPI services"
+requires-python = ">=3.9"
+
+[tool.setuptools.packages.find]
+where = ["."]
+

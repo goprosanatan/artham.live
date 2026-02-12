@@ -1,0 +1,94 @@
+{
+  "title": "Order 04 - State Manager",
+  "uid": "order-04-state-manager",
+  "timezone": "browser",
+  "schemaVersion": 39,
+  "version": 1,
+  "refresh": "5s",
+  "tags": ["orders", "state", "prometheus"],
+  "editable": true,
+  "panels": [
+    {
+      "type": "stat",
+      "title": "Redis Connected",
+      "gridPos": {"h": 8, "w": 6, "x": 0, "y": 0},
+      "datasource": "Prometheus",
+      "id": 1,
+      "targets": [{"expr": "state_redis_connected", "refId": "A", "legendFormat": "Connected"}],
+      "fieldConfig": {
+        "defaults": {
+          "color": {"mode": "thresholds"},
+          "thresholds": {"mode": "absolute", "steps": [{"color": "red", "value": null}, {"color": "green", "value": 1}]}
+        }
+      }
+    },
+    {
+      "type": "stat",
+      "title": "Active Brackets",
+      "gridPos": {"h": 8, "w": 6, "x": 6, "y": 0},
+      "datasource": "Prometheus",
+      "id": 2,
+      "targets": [{"expr": "state_brackets_active", "refId": "A", "legendFormat": "Active"}]
+    },
+    {
+      "type": "stat",
+      "title": "State Commands/sec (5m)",
+      "gridPos": {"h": 8, "w": 6, "x": 12, "y": 0},
+      "datasource": "Prometheus",
+      "id": 3,
+      "targets": [{"expr": "rate(state_commands_total[5m])", "refId": "A", "legendFormat": "Commands"}]
+    },
+    {
+      "type": "stat",
+      "title": "Order Updates (5m)",
+      "gridPos": {"h": 8, "w": 6, "x": 18, "y": 0},
+      "datasource": "Prometheus",
+      "id": 4,
+      "targets": [{"expr": "increase(state_updates_total[5m])", "refId": "A", "legendFormat": "Updates"}]
+    },
+    {
+      "type": "timeseries",
+      "title": "State Commands/sec",
+      "gridPos": {"h": 8, "w": 8, "x": 0, "y": 8},
+      "datasource": "Prometheus",
+      "id": 5,
+      "targets": [{"expr": "rate(state_commands_total[1m])", "refId": "A", "legendFormat": "Commands"}]
+    },
+    {
+      "type": "timeseries",
+      "title": "Order Updates/sec",
+      "gridPos": {"h": 8, "w": 8, "x": 8, "y": 8},
+      "datasource": "Prometheus",
+      "id": 6,
+      "targets": [{"expr": "rate(state_updates_total[1m])", "refId": "A", "legendFormat": "Updates"}]
+    },
+    {
+      "type": "timeseries",
+      "title": "Events Published/sec",
+      "gridPos": {"h": 8, "w": 8, "x": 16, "y": 8},
+      "datasource": "Prometheus",
+      "id": 7,
+      "targets": [{"expr": "rate(state_events_total[1m])", "refId": "A", "legendFormat": "{{event_type}}"}]
+    },
+    {
+      "type": "timeseries",
+      "title": "State Operation Latency p95 (seconds)",
+      "gridPos": {"h": 8, "w": 12, "x": 0, "y": 16},
+      "datasource": "Prometheus",
+      "id": 8,
+      "targets": [{"expr": "histogram_quantile(0.95, sum(rate(state_latency_seconds_bucket[5m])) by (le))", "refId": "A", "legendFormat": "p95 latency"}]
+    },
+    {
+      "type": "timeseries",
+      "title": "Latency Distribution (p50/p95/p99)",
+      "gridPos": {"h": 8, "w": 12, "x": 12, "y": 16},
+      "datasource": "Prometheus",
+      "id": 9,
+      "targets": [
+        {"expr": "histogram_quantile(0.50, sum(rate(state_latency_seconds_bucket[5m])) by (le))", "refId": "A", "legendFormat": "p50"},
+        {"expr": "histogram_quantile(0.95, sum(rate(state_latency_seconds_bucket[5m])) by (le))", "refId": "B", "legendFormat": "p95"},
+        {"expr": "histogram_quantile(0.99, sum(rate(state_latency_seconds_bucket[5m])) by (le))", "refId": "C", "legendFormat": "p99"}
+      ]
+    }
+  ]
+}

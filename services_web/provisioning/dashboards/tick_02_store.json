@@ -1,0 +1,61 @@
+{
+  "title": "Tick 02 - Store",
+  "uid": "tick-02-store",
+  "timezone": "browser",
+  "schemaVersion": 39,
+  "version": 1,
+  "refresh": "",
+  "tags": ["ticks", "database", "prometheus"],
+  "editable": false,
+  "panels": [
+    {
+      "type": "stat",
+      "title": "Redis Connected",
+      "gridPos": {"h": 7, "w": 6, "x": 0, "y": 0},
+      "datasource": "Prometheus",
+      "id": 1,
+      "targets": [{"expr": "tickstore_redis_connected", "refId": "A", "legendFormat": "{{service}}"}]
+    },
+    {
+      "type": "timeseries",
+      "title": "Ticks Read/sec",
+      "gridPos": {"h": 14, "w": 9, "x": 6, "y": 0},
+      "datasource": "Prometheus",
+      "id": 2,
+      "targets": [{"expr": "rate(tickstore_read_total[1m])", "refId": "A", "legendFormat": "Read/sec"}]
+    },
+    {
+      "type": "timeseries",
+      "title": "Ticks Acked/sec",
+      "gridPos": {"h": 14, "w": 9, "x": 15, "y": 0},
+      "datasource": "Prometheus",
+      "id": 3,
+      "targets": [{"expr": "rate(tickstore_acked_total[1m])", "refId": "A", "legendFormat": "Acked/sec"}]
+    },
+    {
+      "type": "stat",
+      "title": "Errors (5m)",
+      "gridPos": {"h": 7, "w": 6, "x": 0, "y": 7},
+      "datasource": "Prometheus",
+      "id": 4,
+      "targets": [{"expr": "increase(tickstore_errors_total[5m])", "refId": "A", "legendFormat": "Errors"}]
+    },
+    {
+      "type": "timeseries",
+      "title": "Batch Duration p95 (seconds)",
+      "gridPos": {"h": 7, "w": 12, "x": 0, "y": 14},
+      "datasource": "Prometheus",
+      "id": 7,
+      "targets": [{"expr": "histogram_quantile(0.95, sum(rate(tickstore_batch_duration_seconds_bucket[5m])) by (le))", "refId": "A", "legendFormat": "p95 batch duration"}]
+    },
+    {
+      "type": "timeseries",
+      "title": "Batch Duration p50 (seconds)",
+      "gridPos": {"h": 7, "w": 12, "x": 12, "y": 14},
+      "datasource": "Prometheus",
+      "id": 8,
+      "targets": [{"expr": "histogram_quantile(0.50, sum(rate(tickstore_batch_duration_seconds_bucket[5m])) by (le))", "refId": "A", "legendFormat": "p50 batch duration"}]
+    }
+  ],
+  "time": {"from": "now-1h", "to": "now"}
+}

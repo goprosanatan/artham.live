@@ -1,0 +1,214 @@
+{
+  "title": "Orders - System Overview",
+  "uid": "orders-system-overview",
+  "timezone": "browser",
+  "schemaVersion": 39,
+  "version": 1,
+  "refresh": "5s",
+  "tags": ["orders", "overview", "prometheus"],
+  "editable": true,
+  "panels": [
+    {
+      "type": "row",
+      "title": "System Status",
+      "gridPos": {"h": 1, "w": 24, "x": 0, "y": 0},
+      "collapsed": false,
+      "id": 10
+    },
+    {
+      "type": "stat",
+      "title": "Broker Connected",
+      "gridPos": {"h": 6, "w": 4, "x": 0, "y": 1},
+      "datasource": "Prometheus",
+      "id": 1,
+      "targets": [{"expr": "broker_connected", "refId": "A"}],
+      "fieldConfig": {
+        "defaults": {
+          "color": {"mode": "thresholds"},
+          "thresholds": {"mode": "absolute", "steps": [{"color": "red", "value": null}, {"color": "green", "value": 1}]}
+        }
+      }
+    },
+    {
+      "type": "stat",
+      "title": "State Manager - Redis",
+      "gridPos": {"h": 6, "w": 4, "x": 4, "y": 1},
+      "datasource": "Prometheus",
+      "id": 2,
+      "targets": [{"expr": "state_redis_connected", "refId": "A"}],
+      "fieldConfig": {
+        "defaults": {
+          "color": {"mode": "thresholds"},
+          "thresholds": {"mode": "absolute", "steps": [{"color": "red", "value": null}, {"color": "green", "value": 1}]}
+        }
+      }
+    },
+    {
+      "type": "stat",
+      "title": "Command Service - Redis",
+      "gridPos": {"h": 6, "w": 4, "x": 8, "y": 1},
+      "datasource": "Prometheus",
+      "id": 3,
+      "targets": [{"expr": "order_command_redis_connected", "refId": "A"}],
+      "fieldConfig": {
+        "defaults": {
+          "color": {"mode": "thresholds"},
+          "thresholds": {"mode": "absolute", "steps": [{"color": "red", "value": null}, {"color": "green", "value": 1}]}
+        }
+      }
+    },
+    {
+      "type": "stat",
+      "title": "Risk Manager - Redis",
+      "gridPos": {"h": 6, "w": 4, "x": 12, "y": 1},
+      "datasource": "Prometheus",
+      "id": 4,
+      "targets": [{"expr": "risk_redis_connected", "refId": "A"}],
+      "fieldConfig": {
+        "defaults": {
+          "color": {"mode": "thresholds"},
+          "thresholds": {"mode": "absolute", "steps": [{"color": "red", "value": null}, {"color": "green", "value": 1}]}
+        }
+      }
+    },
+    {
+      "type": "stat",
+      "title": "Execution Engine - Redis",
+      "gridPos": {"h": 6, "w": 4, "x": 16, "y": 1},
+      "datasource": "Prometheus",
+      "id": 5,
+      "targets": [{"expr": "execution_redis_connected", "refId": "A"}],
+      "fieldConfig": {
+        "defaults": {
+          "color": {"mode": "thresholds"},
+          "thresholds": {"mode": "absolute", "steps": [{"color": "red", "value": null}, {"color": "green", "value": 1}]}
+        }
+      }
+    },
+    {
+      "type": "stat",
+      "title": "Active Brackets",
+      "gridPos": {"h": 6, "w": 4, "x": 20, "y": 1},
+      "datasource": "Prometheus",
+      "id": 6,
+      "targets": [{"expr": "state_brackets_active", "refId": "A"}]
+    },
+    {
+      "type": "row",
+      "title": "Order Throughput",
+      "gridPos": {"h": 1, "w": 24, "x": 0, "y": 7},
+      "collapsed": false,
+      "id": 11
+    },
+    {
+      "type": "timeseries",
+      "title": "Orders Through Pipeline/sec",
+      "gridPos": {"h": 8, "w": 24, "x": 0, "y": 8},
+      "datasource": "Prometheus",
+      "id": 7,
+      "targets": [
+        {"expr": "rate(order_command_read_total[1m])", "refId": "A", "legendFormat": "Command Service - Read"},
+        {"expr": "rate(order_command_forwarded_total[1m])", "refId": "B", "legendFormat": "Command Service - Forward"},
+        {"expr": "rate(risk_read_total[1m])", "refId": "C", "legendFormat": "Risk Manager - Read"},
+        {"expr": "rate(risk_approved_total[1m])", "refId": "D", "legendFormat": "Risk Manager - Approved"},
+        {"expr": "rate(state_commands_total[1m])", "refId": "E", "legendFormat": "State Manager - Commands"},
+        {"expr": "rate(broker_commands_read_total[1m])", "refId": "F", "legendFormat": "Broker Adapter - Commands"}
+      ]
+    },
+    {
+      "type": "row",
+      "title": "Order Execution",
+      "gridPos": {"h": 1, "w": 24, "x": 0, "y": 16},
+      "collapsed": false,
+      "id": 12
+    },
+    {
+      "type": "stat",
+      "title": "Orders Placed (5m)",
+      "gridPos": {"h": 6, "w": 6, "x": 0, "y": 17},
+      "datasource": "Prometheus",
+      "id": 8,
+      "targets": [{"expr": "increase(broker_orders_placed_total[5m])", "refId": "A"}]
+    },
+    {
+      "type": "stat",
+      "title": "Orders Failed (5m)",
+      "gridPos": {"h": 6, "w": 6, "x": 6, "y": 17},
+      "datasource": "Prometheus",
+      "id": 9,
+      "targets": [{"expr": "increase(broker_orders_failed_total[5m])", "refId": "A"}],
+      "fieldConfig": {
+        "defaults": {
+          "color": {"mode": "thresholds"},
+          "thresholds": {"mode": "absolute", "steps": [{"color": "green", "value": null}, {"color": "red", "value": 1}]}
+        }
+      }
+    },
+    {
+      "type": "stat",
+      "title": "Entry Fills (5m)",
+      "gridPos": {"h": 6, "w": 6, "x": 12, "y": 17},
+      "datasource": "Prometheus",
+      "id": 10,
+      "targets": [{"expr": "increase(execution_entry_hits_total[5m])", "refId": "A"}]
+    },
+    {
+      "type": "stat",
+      "title": "Exit Fills (5m)",
+      "gridPos": {"h": 6, "w": 6, "x": 18, "y": 17},
+      "datasource": "Prometheus",
+      "id": 11,
+      "targets": [{"expr": "increase(execution_exit_requests_total[5m])", "refId": "A"}]
+    },
+    {
+      "type": "row",
+      "title": "Latency & Performance",
+      "gridPos": {"h": 1, "w": 24, "x": 0, "y": 23},
+      "collapsed": false,
+      "id": 13
+    },
+    {
+      "type": "timeseries",
+      "title": "P95 Latencies Comparison",
+      "gridPos": {"h": 8, "w": 24, "x": 0, "y": 24},
+      "datasource": "Prometheus",
+      "id": 12,
+      "targets": [
+        {"expr": "histogram_quantile(0.95, sum(rate(order_command_latency_seconds_bucket[5m])) by (le))", "refId": "A", "legendFormat": "Command Service"},
+        {"expr": "histogram_quantile(0.95, sum(rate(risk_latency_seconds_bucket[5m])) by (le))", "refId": "B", "legendFormat": "Risk Manager"},
+        {"expr": "histogram_quantile(0.95, sum(rate(state_latency_seconds_bucket[5m])) by (le))", "refId": "C", "legendFormat": "State Manager"},
+        {"expr": "histogram_quantile(0.95, sum(rate(broker_latency_seconds_bucket[5m])) by (le))", "refId": "D", "legendFormat": "Broker Adapter"},
+        {"expr": "histogram_quantile(0.95, sum(rate(execution_latency_seconds_bucket[5m])) by (le))", "refId": "E", "legendFormat": "Execution Engine"}
+      ]
+    },
+    {
+      "type": "row",
+      "title": "Risk & Validation",
+      "gridPos": {"h": 1, "w": 24, "x": 0, "y": 32},
+      "collapsed": false,
+      "id": 14
+    },
+    {
+      "type": "timeseries",
+      "title": "Risk Validation Results/sec",
+      "gridPos": {"h": 8, "w": 12, "x": 0, "y": 33},
+      "datasource": "Prometheus",
+      "id": 13,
+      "targets": [
+        {"expr": "rate(risk_approved_total[1m])", "refId": "A", "legendFormat": "Approved"},
+        {"expr": "rate(risk_rejected_total[1m])", "refId": "B", "legendFormat": "Rejected"}
+      ]
+    },
+    {
+      "type": "timeseries",
+      "title": "Command Validation Results/sec",
+      "gridPos": {"h": 8, "w": 12, "x": 12, "y": 33},
+      "datasource": "Prometheus",
+      "id": 14,
+      "targets": [
+        {"expr": "rate(order_command_forwarded_total[1m])", "refId": "A", "legendFormat": "Forwarded"},
+        {"expr": "rate(order_command_rejected_total[1m])", "refId": "B", "legendFormat": "Rejected"}
+      ]
+    }
+  ]
+}

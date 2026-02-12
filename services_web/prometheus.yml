@@ -1,0 +1,52 @@
+global:
+  scrape_interval: 5s
+
+scrape_configs:
+  - job_name: 'tick_01_ingestor'
+    static_configs:
+      - targets: ['artham_tick_01_ingestor:9201']
+        labels:
+          service: 'tick_01_ingestor'
+  - job_name: 'tick_02_store'
+    static_configs:
+      - targets: ['artham_tick_02_store:9202']
+        labels:
+          service: 'tick_02_store'
+  - job_name: 'bar_01_builder'
+    static_configs:
+      - targets: ['artham_bar_01_builder:9203']
+        labels:
+          service: 'bar_01_builder'
+  - job_name: 'bar_02_store'
+    static_configs:
+      - targets: ['artham_bar_02_store:9204']
+        labels:
+          service: 'bar_02_store'
+  - job_name: 'broker_adapter'
+    static_configs:
+      - targets: ['artham_order_01_broker_adapter:9205']
+        labels:
+          service: 'broker_adapter'
+  - job_name: 'command_service'
+    static_configs:
+      - targets: ['artham_order_02_command_service:9206']
+        labels:
+          service: 'command_service'
+  - job_name: 'risk_manager'
+    static_configs:
+      - targets: ['artham_order_03_risk_manager:9207']
+        labels:
+          service: 'risk_manager'
+  - job_name: 'state_manager'
+    static_configs:
+      - targets: ['artham_order_04_state_manager:9208']
+        labels:
+          service: 'state_manager'
+  - job_name: 'execution_engine'
+    static_configs:
+      - targets: ['artham_order_05_execution_engine:9209']
+        labels:
+          service: 'execution_engine'
+  - job_name: 'prometheus'
+    static_configs:
+      - targets: ['artham_00_prometheus:9090']

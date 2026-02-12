@@ -1,0 +1,125 @@
+{
+  "exchange": "NSE",
+  "timezone": "Asia/Kolkata",
+
+  "sessions": {
+    "pre_market": {
+      "enabled": false,
+      "days": [1, 2, 3, 4, 5],
+      "open": "09:00",
+      "close": "09:15",
+      "phases": [
+        { "name": "order_entry", "start": "09:00", "end": "09:07" },
+        { "name": "price_discovery", "start": "09:07", "end": "09:08" },
+        { "name": "buffer", "start": "09:08", "end": "09:15" }
+      ]
+    },
+    "regular": {
+      "enabled": true,
+      "days": [1, 2, 3, 4, 5],
+      "open": "09:15",
+      "close": "15:30"
+    },
+    "post_market": {
+      "enabled": false,
+      "days": [1, 2, 3, 4, 5],
+      "open": "15:30",
+      "close": "16:00",
+      "phases": [
+        { "name": "close_calc", "start": "15:30", "end": "15:40" },
+        { "name": "market_orders", "start": "15:40", "end": "16:00" }
+      ]
+    }
+  },
+
+  "session_overrides": {
+    "2026-01-15": {
+      "pre_market": "closed",
+      "regular": "closed",
+      "post_market": "closed"
+    },
+    "2026-01-26": {
+      "pre_market": "closed",
+      "regular": "closed",
+      "post_market": "closed"
+    },
+    "2026-03-03": {
+      "pre_market": "closed",
+      "regular": "closed",
+      "post_market": "closed"
+    },
+    "2026-03-26": {
+      "pre_market": "closed",
+      "regular": "closed",
+      "post_market": "closed"
+    },
+    "2026-03-31": {
+      "pre_market": "closed",
+      "regular": "closed",
+      "post_market": "closed"
+    },
+    "2026-04-03": {
+      "pre_market": "closed",
+      "regular": "closed",
+      "post_market": "closed"
+    },
+    "2026-04-14": {
+      "pre_market": "closed",
+      "regular": "closed",
+      "post_market": "closed"
+    },
+    "2026-05-01": {
+      "pre_market": "closed",
+      "regular": "closed",
+      "post_market": "closed"
+    },
+    "2026-05-28": {
+      "pre_market": "closed",
+      "regular": "closed",
+      "post_market": "closed"
+    },
+    "2026-06-26": {
+      "pre_market": "closed",
+      "regular": "closed",
+      "post_market": "closed"
+    },
+    "2026-09-14": {
+      "pre_market": "closed",
+      "regular": "closed",
+      "post_market": "closed"
+    },
+    "2026-10-02": {
+      "pre_market": "closed",
+      "regular": "closed",
+      "post_market": "closed"
+    },
+    "2026-10-20": {
+      "pre_market": "closed",
+      "regular": "closed",
+      "post_market": "closed"
+    },
+    "2026-11-10": {
+      "pre_market": "closed",
+      "regular": "closed",
+      "post_market": "closed"
+    },
+    "2026-11-24": {
+      "pre_market": "closed",
+      "regular": "closed",
+      "post_market": "closed"
+    },
+    "2026-12-25": {
+      "pre_market": "closed",
+      "regular": "closed",
+      "post_market": "closed"
+    },
+
+    "2026-11-08": {
+      "pre_market": "closed",
+      "regular": { "open": "18:15", "close": "19:15" },
+      "post_market": "closed"
+    }
+  },
+
+  "half_days": []
+}

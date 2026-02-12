@@ -1,0 +1,40 @@
+{
+  "exchange": "MCX",
+  "timezone": "Asia/Kolkata",
+
+  "sessions": {
+    "morning": {
+      "enabled": true,
+      "days": [1, 2, 3, 4, 5],
+      "open": "09:00",
+      "close": "17:00"
+    },
+    "evening": {
+      "enabled": true,
+      "days": [1, 2, 3, 4, 5],
+      "open": "17:00",
+      "close": "23:30"
+    }
+  },
+
+  "session_overrides": {
+    "2026-01-01": { "morning": "open", "evening": "closed" },
+    "2026-01-26": { "morning": "closed", "evening": "closed" },
+    "2026-03-03": { "morning": "closed", "evening": "open" },
+    "2026-03-26": { "morning": "closed", "evening": "open" },
+    "2026-03-31": { "morning": "closed", "evening": "open" },
+    "2026-04-03": { "morning": "closed", "evening": "closed" },
+    "2026-04-14": { "morning": "closed", "evening": "open" },
+    "2026-05-01": { "morning": "closed", "evening": "open" },
+    "2026-05-28": { "morning": "closed", "evening": "open" },
+    "2026-06-26": { "morning": "closed", "evening": "open" },
+    "2026-09-14": { "morning": "closed", "evening": "open" },
+    "2026-10-02": { "morning": "closed", "evening": "closed" },
+    "2026-10-20": { "morning": "closed", "evening": "open" },
+    "2026-11-10": { "morning": "closed", "evening": "open" },
+    "2026-11-24": { "morning": "closed", "evening": "open" },
+    "2026-12-25": { "morning": "closed", "evening": "closed" }
+  },
+
+  "half_days": []
+}

@@ -1,0 +1,94 @@
+{
+  "title": "Order 03 - Risk Manager",
+  "uid": "order-03-risk-manager",
+  "timezone": "browser",
+  "schemaVersion": 39,
+  "version": 1,
+  "refresh": "5s",
+  "tags": ["orders", "risk", "prometheus"],
+  "editable": true,
+  "panels": [
+    {
+      "type": "stat",
+      "title": "Redis Connected",
+      "gridPos": {"h": 8, "w": 6, "x": 0, "y": 0},
+      "datasource": "Prometheus",
+      "id": 1,
+      "targets": [{"expr": "risk_redis_connected", "refId": "A", "legendFormat": "Connected"}],
+      "fieldConfig": {
+        "defaults": {
+          "color": {"mode": "thresholds"},
+          "thresholds": {"mode": "absolute", "steps": [{"color": "red", "value": null}, {"color": "green", "value": 1}]}
+        }
+      }
+    },
+    {
+      "type": "stat",
+      "title": "Risk Requests Read (5m)",
+      "gridPos": {"h": 8, "w": 6, "x": 6, "y": 0},
+      "datasource": "Prometheus",
+      "id": 2,
+      "targets": [{"expr": "increase(risk_read_total[5m])", "refId": "A", "legendFormat": "Read"}]
+    },
+    {
+      "type": "stat",
+      "title": "Risk Requests Approved (5m)",
+      "gridPos": {"h": 8, "w": 6, "x": 12, "y": 0},
+      "datasource": "Prometheus",
+      "id": 3,
+      "targets": [{"expr": "increase(risk_approved_total[5m])", "refId": "A", "legendFormat": "Approved"}],
+      "fieldConfig": {
+        "defaults": {
+          "color": {"mode": "thresholds"},
+          "thresholds": {"mode": "absolute", "steps": [{"color": "green", "value": null}]}
+        }
+      }
+    },
+    {
+      "type": "stat",
+      "title": "Risk Requests Rejected (5m)",
+      "gridPos": {"h": 8, "w": 6, "x": 18, "y": 0},
+      "datasource": "Prometheus",
+      "id": 4,
+      "targets": [{"expr": "increase(risk_rejected_total[5m])", "refId": "A", "legendFormat": "Rejected"}],
+      "fieldConfig": {
+        "defaults": {
+          "color": {"mode": "thresholds"},
+          "thresholds": {"mode": "absolute", "steps": [{"color": "green", "value": null}, {"color": "orange", "value": 1}]}
+        }
+      }
+    },
+    {
+      "type": "timeseries",
+      "title": "Risk Requests/sec",
+      "gridPos": {"h": 8, "w": 12, "x": 0, "y": 8},
+      "datasource": "Prometheus",
+      "id": 5,
+      "targets": [
+        {"expr": "rate(risk_read_total[1m])", "refId": "A", "legendFormat": "Read"},
+        {"expr": "rate(risk_approved_total[1m])", "refId": "B", "legendFormat": "Approved"},
+        {"expr": "rate(risk_rejected_total[1m])", "refId": "C", "legendFormat": "Rejected"}
+      ]
+    },
+    {
+      "type": "timeseries",
+      "title": "Risk Processing Latency p95 (seconds)",
+      "gridPos": {"h": 8, "w": 12, "x": 12, "y": 8},
+      "datasource": "Prometheus",
+      "id": 6,
+      "targets": [{"expr": "histogram_quantile(0.95, sum(rate(risk_latency_seconds_bucket[5m])) by (le))", "refId": "A", "legendFormat": "p95 latency"}]
+    },
+    {
+      "type": "timeseries",
+      "title": "Risk Latency Distribution (p50/p95/p99)",
+      "gridPos": {"h": 8, "w": 24, "x": 0, "y": 16},
+      "datasource": "Prometheus",
+      "id": 7,
+      "targets": [
+        {"expr": "histogram_quantile(0.50, sum(rate(risk_latency_seconds_bucket[5m])) by (le))", "refId": "A", "legendFormat": "p50"},
+        {"expr": "histogram_quantile(0.95, sum(rate(risk_latency_seconds_bucket[5m])) by (le))", "refId": "B", "legendFormat": "p95"},
+        {"expr": "histogram_quantile(0.99, sum(rate(risk_latency_seconds_bucket[5m])) by (le))", "refId": "C", "legendFormat": "p99"}
+      ]
+    }
+  ]
+}

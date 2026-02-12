@@ -1,0 +1,16 @@
+{
+  "exchange": "CDS",
+  "timezone": "Asia/Kolkata",
+
+  "sessions": {
+    "regular": {
+      "enabled": true,
+      "days": [1, 2, 3, 4, 5],
+      "open": "09:00",
+      "close": "17:00"
+    }
+  },
+
+  "session_overrides": {},
+  "half_days": []
+}

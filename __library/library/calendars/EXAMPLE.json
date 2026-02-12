@@ -1,0 +1,155 @@
+{
+  // ------------------------------------------------------
+  // Exchange identifier (matches broker / internal enum)
+  // ------------------------------------------------------
+  "exchange": "EXAMPLE_EXCHANGE",
+
+  // ------------------------------------------------------
+  // IANA timezone for all timestamps in this calendar
+  // Used by:
+  // - bar builders
+  // - chart axes
+  // - strategy time checks
+  // ------------------------------------------------------
+  "timezone": "Asia/Kolkata",
+
+  // ------------------------------------------------------
+  // DEFAULT sessions
+  // These apply to all normal trading days
+  // unless overridden by `session_overrides`
+  // ------------------------------------------------------
+  "sessions": {
+    // ------------------------
+    // Pre-market session
+    // ------------------------
+    "pre_market": {
+      "enabled": true,
+      // Trading weekdays (1=Mon ... 7=Sun)
+      "days": [1, 2, 3, 4, 5],
+
+      // Session open / close times
+      "open": "09:00",
+      "close": "09:15",
+
+      // Optional microstructure phases
+      // These DO NOT affect charts
+      // Used by OMS / execution logic
+      "phases": [
+        {
+          "name": "order_entry",
+          "start": "09:00",
+          "end": "09:07"
+        },
+        {
+          "name": "price_discovery",
+          "start": "09:07",
+          "end": "09:08"
+        },
+        {
+          "name": "buffer",
+          "start": "09:08",
+          "end": "09:15"
+        }
+      ]
+    },
+
+    // ------------------------
+    // Regular trading session
+    // ------------------------
+    "regular": {
+      "enabled": true,
+      "days": [1, 2, 3, 4, 5],
+      "open": "09:15",
+      "close": "15:30"
+    },
+
+    // ------------------------
+    // Post-market session
+    // ------------------------
+    "post_market": {
+      "enabled": true,
+      "days": [1, 2, 3, 4, 5],
+      "open": "15:30",
+      "close": "16:00",
+
+      "phases": [
+        {
+          "name": "close_calculation",
+          "start": "15:30",
+          "end": "15:40"
+        },
+        {
+          "name": "market_orders",
+          "start": "15:40",
+          "end": "16:00"
+        }
+      ]
+    }
+  },
+
+  // ------------------------------------------------------
+  // SESSION OVERRIDES (the MOST IMPORTANT section)
+  //
+  // This is the ONLY mechanism for:
+  // - holidays
+  // - partial trading days
+  // - special sessions (Muhurat, etc.)
+  //
+  // Key = YYYY-MM-DD
+  // ------------------------------------------------------
+  "session_overrides": {
+    // --------------------------------------------
+    // FULL HOLIDAY
+    // All sessions are closed
+    // --------------------------------------------
+    "2026-01-26": {
+      "pre_market": "closed",
+      "regular": "closed",
+      "post_market": "closed"
+    },
+
+    // --------------------------------------------
+    // PARTIAL HOLIDAY
+    // Only regular session is open
+    // (example: Muhurat trading)
+    // --------------------------------------------
+    "2026-11-08": {
+      "pre_market": "closed",
+
+      // Override replaces default open/close
+      "regular": {
+        "open": "18:15",
+        "close": "19:15",
+        "note": "Special evening trading session"
+      },
+
+      "post_market": "closed"
+    },
+
+    // --------------------------------------------
+    // Session-specific closure
+    // (example: commodity morning closed,
+    // evening open)
+    // --------------------------------------------
+    "2026-03-03": {
+      "morning": "closed",
+      "evening": "open"
+    }
+  },
+
+  // ------------------------------------------------------
+  // HALF DAYS (kept for future-proofing)
+  //
+  // Not used by NSE today, but used globally
+  // Example:
+  // - Early close days (US markets)
+  // ------------------------------------------------------
+  "half_days": [
+    // Example structure (currently unused):
+    // {
+    //   "date": "2026-12-24",
+    //   "session": "regular",
+    //   "close": "13:00"
+    // }
+  ]
+}

@@ -1,0 +1,16 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/* Adding image-rendering for canvas */
+@layer utilities {
+    .image-rendering-pixelated {
+    image-rendering: pixelated;
+    }
+    .image-rendering-crisp-edges {
+    image-rendering: crisp-edges;
+    }
+    .image-rendering-auto {
+    image-rendering: auto;
+    }
+}
