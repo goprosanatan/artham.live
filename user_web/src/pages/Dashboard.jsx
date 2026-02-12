@@ -204,6 +204,15 @@ const Dashboard = () => {
           onClearOrder={() => setSelectedOrder(null)}
           onOrderSubmitted={fetchOrders}
         />
+        {/* <ChartVertical
+          instrumentId={selectedInstrument.instrument_id}
+          className="grow rounded-lg"
+          is_intraday={false}
+          showVolume
+          externalOrder={selectedOrder}
+          onClearOrder={() => setSelectedOrder(null)}
+          onOrderSubmitted={fetchOrders}
+        /> */}
         {/* Orders Section - Right Sidebar */}
         <div className="basis-1/4 rounded-lg border border-gray-300 bg-white/70 dark:bg-gray-700 dark:border-gray-600 flex flex-col overflow-hidden">
           {/* Header */}
