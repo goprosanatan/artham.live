@@ -325,6 +325,17 @@ const Dashboard = () => {
                     const hasTargetFilled = stateHistoryStates.includes("TARGET_FILLED");
                     const hasStoplossFilled = stateHistoryStates.includes("STOPLOSS_FILLED");
 
+                    // Determine states section background color
+                    let statesSectionBgClass = "bg-white dark:bg-gray-800";
+                    let statesTimeTextClass = "text-gray-500 dark:text-gray-400";
+                    if (hasTargetFilled) {
+                      statesSectionBgClass = "bg-green-300 dark:bg-green-900";
+                      statesTimeTextClass = "text-gray-800 dark:text-gray-200";
+                    } else if (hasStoplossFilled) {
+                      statesSectionBgClass = "bg-red-300 dark:bg-red-900";
+                      statesTimeTextClass = "text-gray-800 dark:text-gray-200";
+                    }
+
                     return (
                       <div
                         key={rowKey}
@@ -388,7 +399,7 @@ const Dashboard = () => {
                         </div>
 
                         {/* State History Timeline */}
-                        <div className="mb-2 pb-2 border-t border-gray-300 dark:border-gray-500 pt-1.5">
+                        <div className={`mb-2 pb-2 border-t border-gray-300 dark:border-gray-500 pt-1.5 px-2 rounded ${statesSectionBgClass}`}>
                           {/* Partial Fill Indicator */}
                           {order.filled_qty && order.remaining_qty > 0 && (
                             <div className="mb-2 px-2 py-1 rounded bg-orange-100 dark:bg-orange-900 border border-orange-300 dark:border-orange-700">
@@ -424,25 +435,14 @@ const Dashboard = () => {
                                 return Number.isNaN(date.getTime()) ? "--" : date.toLocaleTimeString();
                               })();
                               
-                              // Determine badge color based on state
-                              const state = item.state.toUpperCase();
-                              let badgeClass = "bg-gray-200 dark:bg-gray-600 text-gray-900 dark:text-gray-100";
-                              if (state === "TARGET_FILLED") {
-                                badgeClass = "bg-green-200 dark:bg-green-900 text-green-900 dark:text-green-100 border border-green-400 dark:border-green-700";
-                              } else if (state === "STOPLOSS_FILLED") {
-                                badgeClass = "bg-red-200 dark:bg-red-900 text-red-900 dark:text-red-100 border border-red-400 dark:border-red-700";
-                              } else if (state === "CANCELLED" || state === "REJECTED") {
-                                badgeClass = "bg-gray-300 dark:bg-gray-700 text-gray-900 dark:text-gray-100 border border-gray-400 dark:border-gray-600";
-                              } else if (state === "CREATED" || state === "ENTRY_PLACED") {
-                                badgeClass = "bg-blue-200 dark:bg-blue-900 text-blue-900 dark:text-blue-100 border border-blue-400 dark:border-blue-700";
-                              }
+                              let badgeClass = "bg-white dark:bg-gray-700 text-gray-900 dark:text-gray-100 border border-gray-400 dark:border-gray-500";
                               
                               return (
                                 <div key={idx} className="flex items-center justify-between text-xs">
                                   <span className={`px-1.5 py-0.5 rounded text-xs font-medium ${badgeClass}`}>
                                     {item.state}
                                   </span>
-                                  <span className="text-gray-500 dark:text-gray-400 text-xs">
+                                  <span className={`text-xs ${statesTimeTextClass}`}>
                                     {timeOnly}
                                   </span>
                                 </div>
