@@ -339,12 +339,8 @@ const Dashboard = () => {
                         }}
                         className={`p-2.5 rounded-lg border-2 cursor-pointer transition-all flex-shrink-0 ${
                           isSelected
-                            ? "border-blue-600 bg-blue-50 dark:bg-gray-600 dark:border-blue-500"
-                            : hasTargetFilled
-                            ? "border-green-600 bg-green-50 dark:bg-green-900 dark:border-green-500"
-                            : hasStoplossFilled
-                            ? "border-red-600 bg-red-50 dark:bg-red-900 dark:border-red-500"
-                            : "border-gray-300 dark:border-gray-600 hover:border-gray-400 dark:hover:border-gray-500"
+                            ? "border-blue-600 bg-blue-50 dark:bg-blue-950 dark:border-blue-500"
+                            : "border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-800 hover:border-gray-400 dark:hover:border-gray-500"
                         }`}
                       >
                         {/* Card Header */}
@@ -427,9 +423,23 @@ const Dashboard = () => {
                                 const date = new Date(source);
                                 return Number.isNaN(date.getTime()) ? "--" : date.toLocaleTimeString();
                               })();
+                              
+                              // Determine badge color based on state
+                              const state = item.state.toUpperCase();
+                              let badgeClass = "bg-gray-200 dark:bg-gray-600 text-gray-900 dark:text-gray-100";
+                              if (state === "TARGET_FILLED") {
+                                badgeClass = "bg-green-200 dark:bg-green-900 text-green-900 dark:text-green-100 border border-green-400 dark:border-green-700";
+                              } else if (state === "STOPLOSS_FILLED") {
+                                badgeClass = "bg-red-200 dark:bg-red-900 text-red-900 dark:text-red-100 border border-red-400 dark:border-red-700";
+                              } else if (state === "CANCELLED" || state === "REJECTED") {
+                                badgeClass = "bg-gray-300 dark:bg-gray-700 text-gray-900 dark:text-gray-100 border border-gray-400 dark:border-gray-600";
+                              } else if (state === "CREATED" || state === "ENTRY_PLACED") {
+                                badgeClass = "bg-blue-200 dark:bg-blue-900 text-blue-900 dark:text-blue-100 border border-blue-400 dark:border-blue-700";
+                              }
+                              
                               return (
                                 <div key={idx} className="flex items-center justify-between text-xs">
-                                  <span className="px-1.5 py-0.5 rounded text-xs font-medium bg-gray-200 dark:bg-gray-600 text-gray-900 dark:text-gray-100">
+                                  <span className={`px-1.5 py-0.5 rounded text-xs font-medium ${badgeClass}`}>
                                     {item.state}
                                   </span>
                                   <span className="text-gray-500 dark:text-gray-400 text-xs">
