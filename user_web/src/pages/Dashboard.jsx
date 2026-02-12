@@ -327,13 +327,11 @@ const Dashboard = () => {
 
                     // Determine states section background color
                     let statesSectionBgClass = "bg-white dark:bg-gray-800";
-                    let statesTimeTextClass = "text-gray-500 dark:text-gray-400";
+                    let statesTimeTextClass = "text-gray-800 dark:text-gray-200";
                     if (hasTargetFilled) {
                       statesSectionBgClass = "bg-green-300 dark:bg-green-900";
-                      statesTimeTextClass = "text-gray-800 dark:text-gray-200";
                     } else if (hasStoplossFilled) {
                       statesSectionBgClass = "bg-red-300 dark:bg-red-900";
-                      statesTimeTextClass = "text-gray-800 dark:text-gray-200";
                     }
 
                     return (
