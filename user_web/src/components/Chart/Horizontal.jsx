@@ -2619,6 +2619,65 @@ export default function ChartHorizontal({
       const stopLineColor = colors.orderStopColor || colors.stopColor;
 
       const barCount = mappedBars.length;
+      const latestBarTs = latestActualBar?.date ?? null;
+
+      const toNumericTimestamp = (value) => {
+        if (value == null) return null;
+        const numeric = Number(value);
+        if (Number.isFinite(numeric)) return numeric;
+        const parsed = new Date(value).getTime();
+        return Number.isFinite(parsed) ? parsed : null;
+      };
+
+      const roundToPreviousMinute = (ts) =>
+        ts == null ? null : Math.floor(ts / 60000) * 60000;
+
+      const parseStateTransitions = (transitions) => {
+        if (!transitions) return [];
+        try {
+          const parsed =
+            typeof transitions === "string"
+              ? JSON.parse(transitions)
+              : transitions;
+          return Array.isArray(parsed) ? parsed : [];
+        } catch (error) {
+          return [];
+        }
+      };
+
+      const stateTransitions = parseStateTransitions(
+        externalOrder?.state_transitions
+      );
+      const normalizedTransitions = stateTransitions
+        .map((item) => {
+          const state = String(item?.state || "").toUpperCase();
+          const timestamp = toNumericTimestamp(item?.timestamp);
+          return state ? { state, timestamp } : null;
+        })
+        .filter(Boolean);
+
+      const completedTsFromTransitions = normalizedTransitions
+        .filter((item) => item.state === "COMPLETED" && item.timestamp != null)
+        .reduce((maxTs, item) => Math.max(maxTs, item.timestamp), -Infinity);
+      const completedTsCandidate =
+        completedTsFromTransitions !== -Infinity
+          ? completedTsFromTransitions
+          : toNumericTimestamp(externalOrder?.completed_at) ??
+            toNumericTimestamp(externalOrder?.updated_at);
+      const completedTs = roundToPreviousMinute(completedTsCandidate);
+
+      const hasCompleted =
+        normalizedTransitions.some((item) => item.state === "COMPLETED") ||
+        String(externalOrder?.state || "").toUpperCase() === "COMPLETED";
+      const hasCancelled =
+        normalizedTransitions.some((item) => item.state === "CANCELLED") ||
+        String(externalOrder?.state || "").toUpperCase() === "CANCELLED";
+
+      const resolveEffectiveEndTs = (originalEndTs) => {
+        if (hasCompleted && completedTs != null) return completedTs;
+        if (hasCancelled) return originalEndTs;
+        return latestBarTs ?? originalEndTs;
+      };
 
       const resolveRange = (startTs, endTs) => {
         if (!barCount) {
@@ -2658,15 +2717,15 @@ export default function ChartHorizontal({
 
       const entryRange = resolveRange(
         externalOrder.entry_start_ts,
-        externalOrder.entry_end_ts
+        resolveEffectiveEndTs(externalOrder.entry_end_ts)
       );
       const targetRange = resolveRange(
         externalOrder.target_start_ts,
-        externalOrder.target_end_ts
+        resolveEffectiveEndTs(externalOrder.target_end_ts)
       );
       const stopRange = resolveRange(
         externalOrder.stop_start_ts,
-        externalOrder.stop_end_ts
+        resolveEffectiveEndTs(externalOrder.stop_end_ts)
       );
 
       const drawOrderLevel = (y, color, range) => {
