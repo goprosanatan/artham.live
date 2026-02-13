@@ -183,8 +183,8 @@ async def load_historical_ticks(
             SELECT *
             FROM public.ticks
             WHERE instrument_id = %s
-              AND extract(epoch from exchange_ts) >= %s
-              AND extract(epoch from exchange_ts) <= %s
+                AND exchange_ts >= to_timestamp(%s)
+                AND exchange_ts <= to_timestamp(%s)
             ORDER BY exchange_ts ASC
             LIMIT 100000
             """
@@ -326,6 +326,7 @@ async def pause_replay_session(redis_conn: Redis, session_id: str):
     if session.pause_started_ms is None:
         session.pause_started_ms = datetime.now(timezone.utc).timestamp() * 1000
     session.run_event.clear()
+    logger.info(f"[REPLAY] paused session {session_id}")
     await update_session_status(redis_conn, session_id, "paused")
 
 
@@ -339,6 +340,9 @@ async def resume_replay_session(redis_conn: Redis, session_id: str):
             session.total_paused_ms += paused_for
         session.pause_started_ms = None
     session.run_event.set()
+    logger.info(
+        f"[REPLAY] resumed session {session_id} (total_paused_ms={session.total_paused_ms:.0f})"
+    )
     await update_session_status(redis_conn, session_id, "running")
 
 
