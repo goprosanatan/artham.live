@@ -602,7 +602,7 @@ const Replay = () => {
         <div className="flex-1 min-w-0 rounded-lg border border-gray-300 bg-white/70 dark:bg-gray-700 dark:border-gray-600 overflow-hidden">
           {selectedSession && Number.isFinite(selectedInstrumentId) ? (
             <ChartHorizontal
-              key={`${selectedSession.session_id}-${selectedSession.updated_at}`}
+              key={selectedSession.session_id}
               instrumentId={selectedInstrumentId}
               replaySessionId={selectedSession.session_id}
               replayBarsTimestampEnd={

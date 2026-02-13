@@ -55,6 +55,8 @@ class ReplaySession:
         self.stop_event = asyncio.Event()
         self.run_event.set()
         self.task = None
+        self.pause_started_ms = None
+        self.total_paused_ms = 0.0
 
 
 SESSIONS = {}
@@ -198,7 +200,9 @@ async def load_historical_ticks(
         return []
 
 
-async def handle_session_start(redis_conn: Redis, session_id: str, payload: dict):
+async def handle_session_start(
+    redis_conn: Redis, session_id: str, payload: dict, session: ReplaySession
+):
     logger.info(f"[REPLAY] session_start received for {session_id}: {payload}")
 
     instrument_id = payload.get("instrument_id")
@@ -235,6 +239,10 @@ async def handle_session_start(redis_conn: Redis, session_id: str, payload: dict
     
     for idx, tick in enumerate(ticks):
         try:
+            await session.run_event.wait()
+            if session.stop_event.is_set():
+                break
+
             ts_seconds = tick["exchange_ts"].timestamp() if hasattr(tick["exchange_ts"], "timestamp") else tick["exchange_ts"]
             ts_ms = int(ts_seconds * 1000)
             
@@ -248,12 +256,26 @@ async def handle_session_start(redis_conn: Redis, session_id: str, payload: dict
             # If speed=2.0, play faster (half the delays)
             # If speed=0.5, play slower (double the delays)
             time_since_first = ts_ms - first_tick_ts
-            elapsed_real = (datetime.now(timezone.utc).timestamp() * 1000) - start_publish_time
+            elapsed_real = (
+                (datetime.now(timezone.utc).timestamp() * 1000)
+                - start_publish_time
+                - session.total_paused_ms
+            )
             expected_elapsed = time_since_first / payload.get("speed", 1.0)
             
             sleep_duration = (expected_elapsed - elapsed_real) / 1000.0  # Convert to seconds
             if sleep_duration > 0:
-                await asyncio.sleep(sleep_duration)
+                remaining = sleep_duration
+                while remaining > 0:
+                    await session.run_event.wait()
+                    if session.stop_event.is_set():
+                        break
+                    chunk = min(0.2, remaining)
+                    await asyncio.sleep(chunk)
+                    remaining -= chunk
+
+            if session.stop_event.is_set():
+                break
 
             # Publish clock update
             await publish_clock(redis_conn, session_id=session_id, ts_ms=ts_ms)
@@ -275,7 +297,9 @@ async def handle_session_start(redis_conn: Redis, session_id: str, payload: dict
 
 
 async def run_replay_session(redis_conn: Redis, session: ReplaySession):
-    await handle_session_start(redis_conn, session.session_id, session.payload)
+    await handle_session_start(
+        redis_conn, session.session_id, session.payload, session
+    )
     while not session.stop_event.is_set():
         await session.run_event.wait()
         if session.stop_event.is_set():
@@ -295,18 +319,27 @@ async def start_replay_session(redis_conn: Redis, session_id: str, payload: dict
     return session
 
 
-async def pause_replay_session(session_id: str):
+async def pause_replay_session(redis_conn: Redis, session_id: str):
     session = SESSIONS.get(session_id)
     if not session:
         return
+    if session.pause_started_ms is None:
+        session.pause_started_ms = datetime.now(timezone.utc).timestamp() * 1000
     session.run_event.clear()
+    await update_session_status(redis_conn, session_id, "paused")
 
 
-async def resume_replay_session(session_id: str):
+async def resume_replay_session(redis_conn: Redis, session_id: str):
     session = SESSIONS.get(session_id)
     if not session:
         return
+    if session.pause_started_ms is not None:
+        paused_for = (datetime.now(timezone.utc).timestamp() * 1000) - session.pause_started_ms
+        if paused_for > 0:
+            session.total_paused_ms += paused_for
+        session.pause_started_ms = None
     session.run_event.set()
+    await update_session_status(redis_conn, session_id, "running")
 
 
 async def restart_replay_session(redis_conn: Redis, session_id: str):
@@ -394,11 +427,11 @@ async def handle_control_event(redis_conn: Redis, event: str, session_id: str, p
         return
 
     if event == "session_pause":
-        await pause_replay_session(session_id=session_id)
+        await pause_replay_session(redis_conn, session_id=session_id)
         return
 
     if event == "session_resume":
-        await resume_replay_session(session_id=session_id)
+        await resume_replay_session(redis_conn, session_id=session_id)
         return
 
     if event == "session_restart":

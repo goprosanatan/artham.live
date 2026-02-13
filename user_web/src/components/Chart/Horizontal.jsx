@@ -232,6 +232,7 @@ export default function ChartHorizontal({
 
   // Tracks whether websocket is connected and authenticated (enables subscription effect)
   const [wsConnected, setWsConnected] = useState(false);
+  const didInitialCenterRef = useRef(false);
 
   // Refs to track current values for websocket callbacks.
   // WebSocket event handlers capture state at connection time, causing stale closure issues.
@@ -312,6 +313,7 @@ export default function ChartHorizontal({
     // Reset view (pan/zoom/inertia) so a new instrument starts from the default right-aligned view
     velRef.current = 0; // Stop any ongoing inertia from the previous instrument
     prevBarLengthRef.current = 0; // Allow auto-scroll to work for the new dataset
+    didInitialCenterRef.current = false; // Allow one-time recenter after load
     setBarWidth(12); // Reset zoom level
     setOffsetX(0); // Temporary neutral pan; recenter effect will right-align after data loads
 
@@ -3181,12 +3183,18 @@ export default function ChartHorizontal({
   useEffect(() => {
     // Recenter chart when bars first load and width is at default (12px)
     // This ensures the chart starts right-aligned instead of left-aligned
-    if (mappedBars.length > 0 && chartAreaW > 0 && barWidth === 12) {
+    if (
+      !didInitialCenterRef.current &&
+      mappedBars.length > 0 &&
+      chartAreaW > 0 &&
+      barWidth === 12
+    ) {
       const lastRealWidth =
         lastActualIndex >= 0 ? (lastActualIndex + 1) * colStride : 0;
       const totalWidth = lastRealWidth || mappedBars.length * colStride;
       // Right-align to last real bar; ignore placeholders for initial view
       setOffsetX(Math.min(0, chartAreaW - LEFT - RIGHT - totalWidth));
+      didInitialCenterRef.current = true;
     }
 
     // Setup inertia animation loop
