@@ -118,7 +118,8 @@ async def get_bars_slots(
     pg_conn: psycopg.AsyncConnection,
     instrument_id: str,
     timeframe: str,
-    timestamp_end: Optional[int] = None,
+    bars_timestamp_end: Optional[int] = None,
+    slots_timestamp_end: Optional[int] = None,
 ):
     instrument_search = INSTRUMENT_SEARCH_ASYNC(pg_conn=pg_conn)
     instrument_info = await instrument_search.filter(instrument_id=instrument_id)
@@ -137,7 +138,7 @@ async def get_bars_slots(
     bars = await loader.load_bars(
         instrument_id=instrument_id,
         timeframe=timeframe,
-        timestamp_end=timestamp_end,  # Unix timestamp in milliseconds, or None for latest
+        timestamp_end=bars_timestamp_end,  # Unix timestamp in milliseconds, or None for latest
     )
 
     slots: List[int] = []
@@ -155,7 +156,7 @@ async def get_bars_slots(
             end_dt=last_bar_date,
         )
 
-        if timestamp_end is None:
+        if slots_timestamp_end is None:
             all_slots += CALENDAR_LOADER.session_slots_after(
                 exchange=exchange,
                 timeframe=timeframe,

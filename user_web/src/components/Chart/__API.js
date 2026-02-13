@@ -40,13 +40,22 @@ export function useChartApi() {
       });
       return typeof data === "string" ? JSON.parse(data) : data;
     },
-    getData: async ({ instrument_id, timeframe, timestamp_end }) => {
+    getData: async ({
+      instrument_id,
+      timeframe,
+      bars_timestamp_end,
+      slots_timestamp_end,
+    }) => {
       try {
-        const raw = await request("chart/data/bars_slots", "GET", {
+        // Build params, only include non-null values
+        const params = {
           instrument_id,
           timeframe,
-          timestamp_end,
-        });
+        };
+        if (bars_timestamp_end != null) params.bars_timestamp_end = bars_timestamp_end;
+        if (slots_timestamp_end != null) params.slots_timestamp_end = slots_timestamp_end;
+
+        const raw = await request("chart/data/bars_slots", "GET", params);
 
         const payload = typeof raw === "string" ? JSON.parse(raw) : raw || {};
 

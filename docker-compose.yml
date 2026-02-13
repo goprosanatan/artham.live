@@ -207,6 +207,67 @@ services:
     networks:
       - artham_net
 
+  replay_engine:
+    build:
+      context: .
+      dockerfile: services/Dockerfile
+    image: artham_replay_01_engine:latest
+    container_name: artham_replay_01_engine
+    command: [ "python", "replay_01_engine.py" ]
+    env_file:
+      - ./services/.env
+    environment:
+      TZ: Asia/Kolkata
+      DIR_LOGS: /logs
+      REDIS_HOST: redis
+      REDIS_PORT: 6379
+      POSTGRES_HOST: postgres
+      POSTGRES_PORT: 5432
+      POSTGRES_DB: artham
+    ports:
+      - "9211:9211"
+    volumes:
+      - logs_data:/logs
+    restart: unless-stopped
+    depends_on:
+      redis:
+        condition: service_healthy
+      postgres:
+        condition: service_healthy
+    networks:
+      - artham_net
+
+  replay_bar_builder:
+    build:
+      context: .
+      dockerfile: services/Dockerfile
+    image: artham_replay_02_bar_builder:latest
+    container_name: artham_replay_02_bar_builder
+    command: [ "python", "replay_02_bar_builder.py" ]
+    env_file:
+      - ./services/.env
+    environment:
+      TZ: Asia/Kolkata
+      DIR_LOGS: /logs
+      REDIS_HOST: redis
+      REDIS_PORT: 6379
+      POSTGRES_HOST: postgres
+      POSTGRES_PORT: 5432
+      POSTGRES_DB: artham
+      REPLAY_BAR_BUILDER_METRICS_PORT: 9212
+    ports:
+      - "9212:9212"
+    volumes:
+      - logs_data:/logs
+    restart: unless-stopped
+    depends_on:
+      redis:
+        condition: service_healthy
+      postgres:
+        condition: service_healthy
+    networks:
+      - artham_net
+
   order_broker_adapter:
     build:
       context: .

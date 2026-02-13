@@ -3,7 +3,7 @@ import redis.asyncio as redis
 import logging
 import asyncio
 import json
-from typing import Set, Dict
+from typing import Dict
 from decouple import config
 
 logger = logging.getLogger(__name__)
@@ -97,6 +97,89 @@ async def subscription_end(sid: str, async_redis_pool):
         await pipe.execute()
         logger.info(f"Subscription ended for user: {sid}, cleaned up {total_cleaned} total subscriptions")
 
+
+def replay_stream_key(session_id: str, sub_type: str) -> str:
+    if sub_type == "bars.1m":
+        return REPLAY_STREAM_TEMPLATE_1M.format(session_id=session_id)
+    if sub_type == "bars.1D":
+        return REPLAY_STREAM_TEMPLATE_1D.format(session_id=session_id)
+    raise ValueError(f"Unsupported replay subscription type: {sub_type}")
+
+
+def _replay_sub_task_key(sid: str, sub_type: str, session_id: str):
+    return (sid, sub_type, session_id)
+
+
+async def _stop_replay_task(sid: str, sub_type: str, session_id: str):
+    task_key = _replay_sub_task_key(sid, sub_type, session_id)
+    task = REPLAY_SUB_TASKS.pop(task_key, None)
+    if task:
+        task.cancel()
+        try:
+            await task
+        except asyncio.CancelledError:
+            pass
+
+
+async def _stop_all_replay_tasks_for_sid(sid: str):
+    task_keys = [key for key in REPLAY_SUB_TASKS if key[0] == sid]
+    for key in task_keys:
+        task = REPLAY_SUB_TASKS.pop(key, None)
+        if not task:
+            continue
+        task.cancel()
+        try:
+            await task
+        except asyncio.CancelledError:
+            pass
+
+
+async def _replay_stream_reader(sid: str, sub_type: str, session_id: str, async_redis_pool):
+    stream_key = replay_stream_key(session_id=session_id, sub_type=sub_type)
+    last_id = "0"  # Start from the beginning to catch all historical bars for replay
+    redis_conn = redis.Redis(connection_pool=async_redis_pool)
+
+    try:
+        while True:
+            messages = await redis_conn.xread(
+                streams={stream_key: last_id},
+                count=100,
+                block=1000,
+            )
+
+            if not messages:
+                continue
+
+            for _, entries in messages:
+                for msg_id, values in entries:
+                    payload = {
+                        k.decode() if isinstance(k, bytes) else k:
+                        v.decode() if isinstance(v, bytes) else v
+                        for k, v in values.items()
+                    }
+                    await websocket.emit(
+                        "bar",
+                        {
+                            "type": sub_type,
+                            "mode": "replay",
+                            "session_id": session_id,
+                            "data": payload,
+                        },
+                        room=sid,
+                    )
+                    last_id = msg_id
+    except asyncio.CancelledError:
+        logger.info(
+            f"Replay stream reader cancelled: sid={sid}, type={sub_type}, session={session_id}"
+        )
+        raise
+    except Exception as e:
+        logger.exception(
+            f"Replay stream reader failed: sid={sid}, type={sub_type}, session={session_id}, error={e}"
+        )
+    finally:
+        await redis_conn.close()
+
 async def subscription_add(sid: str, sub_type: str, instruments: list, async_redis_pool):
     """
     Subscribe user to instruments for a specific subscription type.
@@ -164,6 +247,22 @@ BAR_STREAMS = {
     "bars.1m": "md:bars.live.1m",
     "bars.1D": "md:bars.live.1D",
 }
+
+REPLAY_BAR_TYPES = {"bars.1m", "bars.1D"}
+REPLAY_STREAM_PREFIX = config("REPLAY_STREAM_PREFIX", cast=str, default="replay")
+REPLAY_STREAM_TEMPLATE_1M = config(
+    "WEBSOCKET_REPLAY_STREAM_1M_TEMPLATE",
+    cast=str,
+    default="replay:{session_id}:bar:1m",
+)
+REPLAY_STREAM_TEMPLATE_1D = config(
+    "WEBSOCKET_REPLAY_STREAM_1D_TEMPLATE",
+    cast=str,
+    default="replay:{session_id}:bar:1D",
+)
+
+# Per-client replay fanout tasks keyed by (sid, sub_type, session_id)
+REPLAY_SUB_TASKS = {}
 
 # Order events fanout
 ORDER_EVENTS_STREAM = config("OMS_EVENTS_STREAM", cast=str, default="oms:events")
@@ -436,6 +535,7 @@ async def disconnect(sid, reason):
         sid=sid,
         async_redis_pool=asgi_app.state.async_redis_pool,
     )
+    await _stop_all_replay_tasks_for_sid(sid)
     # print(f"----------------------- Websocket DISCONNECTED: {sid} {reason}")
     logger.info(f"Websocket -------- Disconnected connection: {sid} : {reason}")
 
@@ -571,15 +671,125 @@ async def unsubscribe(sid, data):
 async def get_subscriptions(sid, data):
     """Get list of all instruments the user is currently subscribed to."""
     try:
-        instrument_set = await get_user_instruments(sid, asgi_app.state.async_redis_pool)
+        sub_type = data.get("type")
+        if not sub_type or sub_type not in BAR_STREAMS:
+            await websocket.emit(
+                "error",
+                {
+                    "message": f"Invalid subscription type. Must be one of: {list(BAR_STREAMS.keys())}"
+                },
+                room=sid,
+            )
+            return
+
+        async with redis.Redis(connection_pool=asgi_app.state.async_redis_pool) as redis_conn:
+            instrument_set = await redis_conn.smembers(f"ws:user.{sid}.{sub_type}.instruments")
         instruments = [int(inst_id) for inst_id in instrument_set]
         
         await websocket.emit(
             "subscriptions",
-            {"instruments": instruments, "count": len(instruments)},
+            {"type": sub_type, "instruments": instruments, "count": len(instruments)},
             room=sid
         )
         
     except Exception as e:
         logger.error(f"Websocket -------- Get subscriptions error for {sid}: {e}")
         await websocket.emit("error", {"message": f"Get subscriptions failed: {str(e)}"}, room=sid)
+
+
+@websocket.on("subscribe_replay")
+async def subscribe_replay(sid, data):
+    """
+    Subscribe a user to replay bars for one session.
+
+    Expected payload:
+    {
+      "type": "bars.1m" | "bars.1D",
+      "session_id": "<replay_session_id>"
+    }
+    """
+    try:
+        sub_type = data.get("type")
+        session_id = str(data.get("session_id", "")).strip()
+
+        if sub_type not in REPLAY_BAR_TYPES:
+            await websocket.emit(
+                "error",
+                {
+                    "message": f"Invalid replay subscription type. Must be one of: {sorted(REPLAY_BAR_TYPES)}"
+                },
+                room=sid,
+            )
+            return
+
+        if not session_id:
+            await websocket.emit("error", {"message": "session_id is required"}, room=sid)
+            return
+
+        task_key = _replay_sub_task_key(sid, sub_type, session_id)
+        if task_key in REPLAY_SUB_TASKS:
+            await websocket.emit(
+                "subscribed_replay",
+                {"type": sub_type, "session_id": session_id, "status": "already_subscribed"},
+                room=sid,
+            )
+            return
+
+        task = asyncio.create_task(
+            _replay_stream_reader(
+                sid=sid,
+                sub_type=sub_type,
+                session_id=session_id,
+                async_redis_pool=asgi_app.state.async_redis_pool,
+            )
+        )
+        REPLAY_SUB_TASKS[task_key] = task
+
+        await websocket.emit(
+            "subscribed_replay",
+            {"type": sub_type, "session_id": session_id, "status": "ok"},
+            room=sid,
+        )
+    except Exception as e:
+        logger.error(f"Websocket -------- Replay subscribe error for {sid}: {e}")
+        await websocket.emit("error", {"message": f"Replay subscribe failed: {str(e)}"}, room=sid)
+
+
+@websocket.on("unsubscribe_replay")
+async def unsubscribe_replay(sid, data):
+    """
+    Unsubscribe a user from replay bars for one session.
+
+    Expected payload:
+    {
+      "type": "bars.1m" | "bars.1D",
+      "session_id": "<replay_session_id>"
+    }
+    """
+    try:
+        sub_type = data.get("type")
+        session_id = str(data.get("session_id", "")).strip()
+
+        if sub_type not in REPLAY_BAR_TYPES:
+            await websocket.emit(
+                "error",
+                {
+                    "message": f"Invalid replay subscription type. Must be one of: {sorted(REPLAY_BAR_TYPES)}"
+                },
+                room=sid,
+            )
+            return
+
+        if not session_id:
+            await websocket.emit("error", {"message": "session_id is required"}, room=sid)
+            return
+
+        await _stop_replay_task(sid=sid, sub_type=sub_type, session_id=session_id)
+        await websocket.emit(
+            "unsubscribed_replay",
+            {"type": sub_type, "session_id": session_id, "status": "ok"},
+            room=sid,
+        )
+    except Exception as e:
+        logger.error(f"Websocket -------- Replay unsubscribe error for {sid}: {e}")
+        await websocket.emit("error", {"message": f"Replay unsubscribe failed: {str(e)}"}, room=sid)

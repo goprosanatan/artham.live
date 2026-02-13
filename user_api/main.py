@@ -15,10 +15,10 @@ import json
 
 
 try:
-    from routes import user, chart, order, websocket
+    from routes import user, chart, order, replay, websocket
     from db import get_pg_info
 except:
-    from .routes import user, chart, order, websocket
+    from .routes import user, chart, order, replay, websocket
     from .db import get_pg_info
 
 logging.basicConfig(
@@ -105,6 +105,7 @@ app = FastAPI(lifespan=lifespan)
 app.include_router(user.router)
 app.include_router(chart.router)
 app.include_router(order.router)
+app.include_router(replay.router)
 
 # Mount the Socket.IO application onto the FastAPI app
 app.mount(

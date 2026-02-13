@@ -31,6 +31,7 @@ export function createProgram(gl, vsSrc, fsSrc) {
 
 export function createGLResources(gl) {
   const vsSrc = `#version 300 es
+    precision highp float;
     in vec2 aPos;
     in vec2 iCenter;
     in vec2 iHalfSize;

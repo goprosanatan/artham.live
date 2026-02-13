@@ -153,6 +153,9 @@ const snapToTickSize = (price, tickSize) => {
 // Main horizontal chart component handling data loading, rendering, and UI controls.
 export default function ChartHorizontal({
   instrumentId = null,
+  replaySessionId = null,
+  replayBarsTimestampEnd = null,
+  replaySlotsTimestampEnd = null,
   className = "",
   showVolume = true,
   is_intraday = false,
@@ -208,6 +211,17 @@ export default function ChartHorizontal({
   const lastPannedOrderIdRef = useRef(null); // Track which order we auto-panned to
   // State to trigger WebGL gridline update after label Xs are set
   const [labelGridVersion, setLabelGridVersion] = useState(0);
+  const resolvedReplayBarsEndTs = useMemo(() => {
+    if (replayBarsTimestampEnd == null) return null;
+    const parsed = Number(replayBarsTimestampEnd);
+    return Number.isFinite(parsed) ? parsed : null;
+  }, [replayBarsTimestampEnd]);
+
+  const resolvedReplaySlotsEndTs = useMemo(() => {
+    if (replaySlotsTimestampEnd == null) return null;
+    const parsed = Number(replaySlotsTimestampEnd);
+    return Number.isFinite(parsed) ? parsed : null;
+  }, [replaySlotsTimestampEnd]);
 
   // Acquire auth token for authenticated websocket feeds.
   const { token } = useAuth();
@@ -331,10 +345,19 @@ export default function ChartHorizontal({
       }
 
       // Fetch historical OHLCV bars from API
+      const initialBarsTimestampEnd =
+        replaySessionId && Number.isFinite(resolvedReplayBarsEndTs)
+          ? resolvedReplayBarsEndTs
+          : null;
+      const initialSlotsTimestampEnd =
+        replaySessionId && Number.isFinite(resolvedReplaySlotsEndTs)
+          ? resolvedReplaySlotsEndTs
+          : null;
       const historicalPayload = await getData({
         instrument_id: instrumentId, // Which instrument to fetch
         timeframe: resolvedTimeframe, // Which timeframe (1m, 1D, etc.)
-        timestamp_end: null, // null = fetch up to current time (most recent bars)
+        bars_timestamp_end: initialBarsTimestampEnd,
+        slots_timestamp_end: initialSlotsTimestampEnd,
       });
 
       const historicalRows = Array.isArray(historicalPayload?.bars)
@@ -428,10 +451,14 @@ export default function ChartHorizontal({
       console.log("Loading more bars before:", new Date(earliestTimestamp));
 
       // Fetch 300 bars older than the earliest currently loaded bar
+      // In replay mode, respect the replay session's timestamp_end window for all pagination calls
+      const paginationBarsTimestampEnd = earliestTimestamp;
+      const paginationSlotsTimestampEnd = earliestTimestamp;
       const historicalPayload = await getData({
         instrument_id: selectedInstrumentId, // Current instrument
         timeframe: timeframe, // Current timeframe
-        timestamp_end: earliestTimestamp, // Fetch bars before this timestamp
+        bars_timestamp_end: paginationBarsTimestampEnd,
+        slots_timestamp_end: paginationSlotsTimestampEnd,
       });
 
       // Defensive: ensure response is array
@@ -510,14 +537,17 @@ export default function ChartHorizontal({
     fetchSegments();
   }, []);
 
-  // Reload when parent passes a new instrumentId
+  // Reload when parent passes a new instrumentId or when replay session changes
   useEffect(() => {
     if (!instrumentId) return;
     const numericId = Number(instrumentId);
     if (!Number.isFinite(numericId)) return;
-    if (numericId === selectedInstrumentId) return;
+    // In replay mode, always reload even if instrument is the same (timestamp_end changed)
+    // In live mode, skip if instrument is already selected
+    const shouldSkip = !replaySessionId && numericId === selectedInstrumentId;
+    if (shouldSkip) return;
     loadBarsForInstrument(numericId);
-  }, [instrumentId]);
+  }, [instrumentId, replaySessionId]);
 
   // Websocket lifecycle: establish connection and handle real-time bar updates
   useEffect(() => {
@@ -526,7 +556,14 @@ export default function ChartHorizontal({
 
     // Initialize websocket connection with event handlers
     // connectLive returns control methods: socket, disconnect, subscribe, unsubscribe
-    const { socket, disconnect, subscribe, unsubscribe } = connectLive({
+    const {
+      socket,
+      disconnect,
+      subscribe,
+      unsubscribe,
+      subscribeReplay,
+      unsubscribeReplay,
+    } = connectLive({
       token, // Auth token for websocket authentication
 
       // Called when websocket connection is successfully established
@@ -559,6 +596,14 @@ export default function ChartHorizontal({
 
         // Destructure payload: {type: "bars.1m" | "bars.1D", data: {bar fields}}
         const { type, data: barData } = payload;
+
+        // In replay mode, ignore bars from other replay sessions.
+        if (replaySessionId) {
+          const payloadSessionId = payload?.session_id;
+          if (!payloadSessionId || String(payloadSessionId) !== String(replaySessionId)) {
+            return;
+          }
+        }
 
         // // Debug log for monitoring live data flow
         // console.log("📊 Bar received:", {
@@ -595,13 +640,28 @@ export default function ChartHorizontal({
           return;
 
         // Parse and validate bar data from websocket payload
+        const parsedOpen = Number(barData.open);
+        const parsedClose = Number(barData.close);
+        const parsedHigh = Number(barData.high);
+        const parsedLow = Number(barData.low);
+        const parsedVolume = Number(barData.volume);
+
+        // Require core OHLC values; if high/low are missing, derive from open/close
+        if (!Number.isFinite(parsedOpen) || !Number.isFinite(parsedClose)) return;
+        const normalizedHigh = Number.isFinite(parsedHigh)
+          ? parsedHigh
+          : Math.max(parsedOpen, parsedClose);
+        const normalizedLow = Number.isFinite(parsedLow)
+          ? parsedLow
+          : Math.min(parsedOpen, parsedClose);
+
         const bar = {
           date: barData.bar_ts, // Bar timestamp (milliseconds since epoch)
-          open: parseFloat(barData.open), // Opening price
-          high: parseFloat(barData.high), // Highest price in period
-          low: parseFloat(barData.low), // Lowest price in period
-          close: parseFloat(barData.close), // Closing/current price
-          volume: parseInt(barData.volume, 10), // Trading volume
+          open: parsedOpen, // Opening price
+          high: normalizedHigh, // Highest price in period
+          low: normalizedLow, // Lowest price in period
+          close: parsedClose, // Closing/current price
+          volume: Number.isFinite(parsedVolume) ? parsedVolume : 0, // Trading volume
         };
 
         // Update bar data with new/updated bar
@@ -637,14 +697,21 @@ export default function ChartHorizontal({
     });
 
     // Store websocket control methods in ref for subscription effect to access
-    socketRef.current = { socket, subscribe, unsubscribe, disconnect };
+    socketRef.current = {
+      socket,
+      subscribe,
+      unsubscribe,
+      subscribeReplay,
+      unsubscribeReplay,
+      disconnect,
+    };
 
     // Cleanup function: runs when component unmounts or token changes
     return () => {
       socketRef.current = null; // Clear ref
       disconnect(); // Close websocket connection cleanly
     };
-  }, [token]); // Dependency: only reconnect when auth token changes
+  }, [token, replaySessionId]); // Dependency: reconnect when auth token or replay session changes
 
   // Manage websocket subscriptions: subscribe/unsubscribe when connection state or instrument/timeframe changes
   useEffect(() => {
@@ -652,7 +719,7 @@ export default function ChartHorizontal({
     const ws = socketRef.current;
 
     // Guard: skip if websocket not initialized or methods not available
-    if (!ws || !ws.subscribe || !ws.unsubscribe) return;
+    if (!ws) return;
 
     // Guard: skip if not connected or no instrument selected
     if (!wsConnected || !selectedInstrumentId) return;
@@ -669,8 +736,21 @@ export default function ChartHorizontal({
       subType = "bars.1m";
     }
 
-    // Subscribe to bar updates for selected instrument
+    // Replay mode uses session-scoped subscriptions instead of live instrument subscriptions.
+    if (replaySessionId) {
+      if (!ws.subscribeReplay || !ws.unsubscribeReplay) return;
+      ws.subscribeReplay(replaySessionId, subType);
+      console.log("WS replay subscribe", replaySessionId, subType);
+
+      return () => {
+        ws.unsubscribeReplay(replaySessionId, subType);
+        console.log("WS replay unsubscribe", replaySessionId, subType);
+      };
+    }
+
+    // Live mode: subscribe to bar updates for selected instrument
     // Server will start sending real-time bar updates via onBar handler
+    if (!ws.subscribe || !ws.unsubscribe) return;
     ws.subscribe([selectedInstrumentId], subType);
     console.log("WS subscribe", selectedInstrumentId, subType);
 
@@ -680,7 +760,7 @@ export default function ChartHorizontal({
       ws.unsubscribe([selectedInstrumentId], subType);
       console.log("WS unsubscribe", selectedInstrumentId, subType);
     };
-  }, [wsConnected, selectedInstrumentId, timeframe]); // Re-run when connection state, instrument, or timeframe changes
+  }, [wsConnected, selectedInstrumentId, timeframe, replaySessionId]); // Re-run when connection state, instrument, timeframe, or replay session changes
 
   // Chart appearance controls exposed via the settings panel.
   // These settings can be modified by the user through the settings modal.
@@ -965,14 +1045,33 @@ export default function ChartHorizontal({
     if (!Array.isArray(barData)) return [];
 
     return barData
-      .map((d) => ({
-        date: new Date(d.date).getTime(), // Convert date to milliseconds timestamp (ensures numeric)
-        open: +d.open, // Coerce to number (handles string prices from API)
-        high: +d.high, // Coerce to number
-        low: +d.low, // Coerce to number
-        close: +d.close, // Coerce to number
-        volume: d.volume ? +d.volume : 0, // Coerce to number with fallback to 0
-      }))
+      .map((d) => {
+        const date = new Date(d.date).getTime();
+        const open = Number(d.open);
+        const close = Number(d.close);
+        const highRaw = Number(d.high);
+        const lowRaw = Number(d.low);
+        const high = Number.isFinite(highRaw)
+          ? highRaw
+          : Number.isFinite(open) && Number.isFinite(close)
+          ? Math.max(open, close)
+          : NaN;
+        const low = Number.isFinite(lowRaw)
+          ? lowRaw
+          : Number.isFinite(open) && Number.isFinite(close)
+          ? Math.min(open, close)
+          : NaN;
+        const volume = Number.isFinite(Number(d.volume)) ? Number(d.volume) : 0;
+
+        return {
+          date, // Convert date to milliseconds timestamp (ensures numeric)
+          open, // Coerce to number (handles string prices from API)
+          high, // Coerce to number
+          low, // Coerce to number
+          close, // Coerce to number
+          volume, // Coerce to number with fallback to 0
+        };
+      })
       .sort((a, b) => a.date - b.date); // Sort chronologically (oldest → newest)
   }, [barData]); // Recompute only when raw barData changes
 
@@ -1422,45 +1521,40 @@ export default function ChartHorizontal({
 
     // Calculate how many instances we need to render
     const visibleInstanceCount = end - start; // Number of visible bars
-    const maxDrawableInstances = Math.min(
+    // Allocate capacity for each instance type based on visible bar count and GPU limit
+    // This ensures wicks don't steal space from bodies/volumes
+    const maxInstancesPerType = Math.min(
       visibleInstanceCount,
       glr.maxInstances
-    ); // Cap at GPU limit
+    ); // Each type gets independent capacity
 
     // Allocate Float32Arrays for bar body instance data
     // Each array stores data for all instances, to be uploaded to GPU in one batch
-    const bodyCenters = new Float32Array(maxDrawableInstances * 2); // X,Y center positions
-    const bodyHalf = new Float32Array(maxDrawableInstances * 2); // Half-width, half-height
-    const bodyColors = new Float32Array(maxDrawableInstances * 4); // RGBA colors
+    const bodyCenters = new Float32Array(maxInstancesPerType * 2); // X,Y center positions
+    const bodyHalf = new Float32Array(maxInstancesPerType * 2); // Half-width, half-height
+    const bodyColors = new Float32Array(maxInstancesPerType * 4); // RGBA colors
 
     // Allocate Float32Arrays for wick instance data
-    const wickCenters = new Float32Array(maxDrawableInstances * 2);
-    const wickHalf = new Float32Array(maxDrawableInstances * 2);
-    const wickColors = new Float32Array(maxDrawableInstances * 4);
+    const wickCenters = new Float32Array(maxInstancesPerType * 2);
+    const wickHalf = new Float32Array(maxInstancesPerType * 2);
+    const wickColors = new Float32Array(maxInstancesPerType * 4);
 
     // Allocate Float32Arrays for volume bar instance data
-    const volCenters = new Float32Array(maxDrawableInstances * 2);
-    const volHalf = new Float32Array(maxDrawableInstances * 2);
-    const volColors = new Float32Array(maxDrawableInstances * 4);
+    const volCenters = new Float32Array(maxInstancesPerType * 2);
+    const volHalf = new Float32Array(maxInstancesPerType * 2);
+    const volColors = new Float32Array(maxInstancesPerType * 4);
 
     // Convert user-selected bar colors to RGB floats
     const upRGB = hexToRgb(upCol); // Bullish bar color (close >= open)
     const downRGB = hexToRgb(downCol); // Bearish bar color (close < open)
 
-    // Round to nearest odd integer to ensure consistent pixel-aligned rendering
-    let wickW = getDPR() * (1.0 * wickScale);
-    wickW = Math.max(1, Math.round(wickW));
-    if (wickW % 2 === 0) wickW += 1;
+    // Keep wick width in logical pixels; avoid odd/integer quantization jitter while zooming/panning
+    const wickW = Math.max(1 / dpr, Number(wickScale) || 1);
 
     // Instance counters for each layer (incremented as we add instances to buffers)
     let bodyInstanceIndex = 0, // Number of body instances added
       wickInstanceIndex = 0, // Number of wick instances added
       volumeInstanceIndex = 0; // Number of volume instances added
-
-    // Viewport boundaries for frustum culling
-    // Extended by wick width + 1 subpixel to ensure wicks are fully rendered at edges
-    const viewportLeft = LEFT - wickW - 1 / dpr; // Left edge (extended for wick width)
-    const viewportRight = chartAreaW - RIGHT + wickW + 1 / dpr; // Right edge (extended for wick width)
 
     // Find maximum volume in visible range (for volume bar height normalization)
     let maxVol = 0; // Will store the highest volume value
@@ -1483,34 +1577,37 @@ export default function ChartHorizontal({
       if (!bar || bar.isFuture) continue; // Skip placeholders; they only reserve timeline slots
 
       // Screen X position of bar center, accounting for pan offset and zoom
-      const barCenterX =
+      const rawBarCenterX =
         LEFT + visibleRange.xOff + columnIndex * colStride + colStride / 2;
+      // Snap to device pixel grid for stable thin-line rasterization
+      const barCenterX = Math.round(rawBarCenterX * dpr) / dpr;
 
       // Wick: thin line from low to high, color depends on bar direction
       const isWickUp = bar.close >= bar.open;
       const wickColor = isWickUp ? upRGB : downRGB;
-      // Use bar body width for culling, not just wick width
-      const bodyLeft = barCenterX - barWidth / 2;
-      const bodyRight = barCenterX + barWidth / 2;
 
-      // Only render wick if bar body would be visible in viewport and we have capacity
-      if (
-        bodyRight > viewportLeft &&
-        bodyLeft < viewportRight &&
-        wickInstanceIndex < maxDrawableInstances
-      ) {
+      const wickHighY = Number.isFinite(bar.yHigh)
+        ? bar.yHigh
+        : Math.min(bar.yOpen, bar.yClose);
+      const wickLowY = Number.isFinite(bar.yLow)
+        ? bar.yLow
+        : Math.max(bar.yOpen, bar.yClose);
+
+      // Only skip wick if we've exceeded capacity for this type
+      if (wickInstanceIndex < maxInstancesPerType) {
         // Wick Y center is midpoint between high and low prices
-        const wickCenterY = (bar.yLow + bar.yHigh) * 0.5;
+        const rawWickCenterY = (wickLowY + wickHighY) * 0.5;
+        const wickCenterY = Math.round(rawWickCenterY * dpr) / dpr;
 
         // Store center (X, Y) in floating point
         wickCenters[wickInstanceIndex * 2] = barCenterX;
         wickCenters[wickInstanceIndex * 2 + 1] = wickCenterY;
 
         // Store half-dimensions: GPU shader draws 2x this size centered at center position
-        wickHalf[wickInstanceIndex * 2] = Math.max(0.5, wickW * 0.5);
+        wickHalf[wickInstanceIndex * 2] = Math.max(0.5 / dpr, wickW * 0.5);
         wickHalf[wickInstanceIndex * 2 + 1] = Math.max(
-          0.5,
-          Math.abs(bar.yHigh - bar.yLow) * 0.5
+          0.5 / dpr,
+          Math.abs(wickHighY - wickLowY) * 0.5
         );
 
         // Store RGBA color (4 components per instance)
@@ -1527,7 +1624,9 @@ export default function ChartHorizontal({
       // Math.min/max ensures consistent top/bottom regardless of bar direction (bull/bear)
       const barBodyTop = Math.min(bar.yOpen, bar.yClose);
       const barBodyBottom = Math.max(bar.yOpen, bar.yClose);
-      const bodyCenterY = (barBodyTop + barBodyBottom) * 0.5;
+      const rawBodyCenterY = (barBodyTop + barBodyBottom) * 0.5;
+      // Pixel-snap body Y for stable thin-line rasterization (especially doji)
+      const bodyCenterY = Math.round(rawBodyCenterY * dpr) / dpr;
 
       const isBodyUp = bar.close >= bar.open;
       const bodyColor = isBodyUp ? upRGB : downRGB;
@@ -1537,7 +1636,7 @@ export default function ChartHorizontal({
       // otherwise, render wicks-only for better clarity at high density.
       if (
         barWidth >= SHOW_BODY_THRESHOLD &&
-        bodyInstanceIndex < maxDrawableInstances
+        bodyInstanceIndex < maxInstancesPerType
       ) {
         // Position: X, Y Center
         bodyCenters[bodyInstanceIndex * 2] = barCenterX;
@@ -1545,9 +1644,10 @@ export default function ChartHorizontal({
 
         // Dimensions: Half-width, Half-height (passed to shader)
         // Ensure at least 0.5px size to prevent aliasing disappearance
+        // Use DPI-aware minimum height so thin doji bodies don't vanish
         bodyHalf[bodyInstanceIndex * 2] = Math.max(0.5, barWidth * 0.5);
         bodyHalf[bodyInstanceIndex * 2 + 1] = Math.max(
-          0.5,
+          0.5 / dpr,
           (barBodyBottom - barBodyTop) * 0.5
         );
 
@@ -1565,7 +1665,7 @@ export default function ChartHorizontal({
       if (
         volEnabled &&
         VOLUME_H > 0 &&
-        volumeInstanceIndex < maxDrawableInstances
+        volumeInstanceIndex < maxInstancesPerType
       ) {
         // Calculate relative height based on max volume in view
         const volumeRatio = Math.min(1, bar.volume / maxVol);
@@ -3659,7 +3759,7 @@ export default function ChartHorizontal({
             letterSpacing: "0.5px",
           }}
         >
-          Live
+          {replaySessionId ? "Replay" : "Live"}
         </span>
       </div>
       <div

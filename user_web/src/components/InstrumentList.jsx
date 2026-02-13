@@ -1,7 +1,12 @@
 import { useState, useEffect } from "react";
 import { useChartApi } from "@components/Chart/__API.js";
 
-const InstrumentList = ({ onSelectInstrument, className = "" }) => {
+const InstrumentList = ({
+  onSelectInstrument,
+  className = "",
+  searchTerm = "",
+  title = "RELIANCE",
+}) => {
   const { filterInstrument } = useChartApi();
   const [instruments, setInstruments] = useState({
     EQ: [],
@@ -10,6 +15,7 @@ const InstrumentList = ({ onSelectInstrument, className = "" }) => {
   });
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
+  const normalizedSearch = searchTerm.trim().toLowerCase();
 
   useEffect(() => {
     loadInstruments();
@@ -58,11 +64,38 @@ const InstrumentList = ({ onSelectInstrument, className = "" }) => {
     }
   };
 
+  const filterBySearch = (list) => {
+    if (!normalizedSearch) return list;
+    return list.filter((instrument) => {
+      const haystack = [
+        instrument.trading_symbol,
+        instrument.description,
+        instrument.underlying_trading_symbol,
+        instrument.exchange,
+        instrument.segment,
+        instrument.instrument_type,
+        instrument.instrument_id,
+      ]
+        .filter(Boolean)
+        .join(" ")
+        .toLowerCase();
+      return haystack.includes(normalizedSearch);
+    });
+  };
+
+  const filtered = {
+    EQ: filterBySearch(instruments.EQ),
+    FUT: filterBySearch(instruments.FUT),
+    OPT: filterBySearch(instruments.OPT),
+  };
+  const totalCount = filtered.EQ.length + filtered.FUT.length + filtered.OPT.length;
+  const emptyLabel = normalizedSearch ? "No matches" : "No instruments";
+
   const renderInstrumentsList = (list, section) => {
     if (list.length === 0) {
       return (
         <div className="p-2 text-xs text-gray-500 dark:text-gray-300 flex-shrink-0">
-          No instruments
+          {emptyLabel}
         </div>
       );
     }
@@ -76,7 +109,7 @@ const InstrumentList = ({ onSelectInstrument, className = "" }) => {
             className="p-2 border-b border-gray-200 dark:border-gray-600 cursor-pointer hover:bg-orange-100 dark:hover:bg-gray-700 transition-colors text-xs bg-white dark:bg-gray-800"
           >
             <div className="font-semibold text-gray-800 dark:text-gray-50">
-              {instrument.description}
+              {instrument.trading_symbol || instrument.description}
             </div>
             <div className="text-xs text-gray-500 dark:text-gray-200 flex gap-2 items-center">
               <span className="px-1.5 py-0.5 bg-orange-100 text-orange-800 dark:bg-orange-800 dark:text-orange-50 rounded border border-orange-200 dark:border-orange-700">
@@ -84,6 +117,11 @@ const InstrumentList = ({ onSelectInstrument, className = "" }) => {
               </span>
               <span>ID: {instrument.instrument_id}</span>
             </div>
+            {instrument.trading_symbol && instrument.description && (
+              <div className="text-xs text-gray-500 dark:text-gray-200">
+                {instrument.description}
+              </div>
+            )}
             {instrument.expiry && (
               <div className="text-xs text-gray-500 dark:text-gray-200">
                 Exp: {new Date(instrument.expiry).toLocaleDateString()}
@@ -140,12 +178,9 @@ const InstrumentList = ({ onSelectInstrument, className = "" }) => {
     >
       {/* Header */}
       <div className="p-3 border-b border-gray-400 dark:border-gray-600 bg-gray-200 dark:bg-gray-800 flex-shrink-0">
-        <h2 className="font-bold text-gray-800 dark:text-gray-50">RELIANCE</h2>
+        <h2 className="font-bold text-gray-800 dark:text-gray-50">{title}</h2>
         <p className="text-xs text-gray-600 dark:text-gray-200">
-          {instruments.EQ.length +
-            instruments.FUT.length +
-            instruments.OPT.length}{" "}
-          instruments
+          {totalCount} instruments
         </p>
       </div>
 
@@ -160,9 +195,9 @@ const InstrumentList = ({ onSelectInstrument, className = "" }) => {
           </div>
         ) : (
           <div className="flex flex-col">
-            {renderSection("EQ", "EQ", instruments.EQ)}
-            {renderSection("FUTURES", "FUT", instruments.FUT)}
-            {renderSection("OPTIONS", "OPT", instruments.OPT)}
+            {renderSection("EQ", "EQ", filtered.EQ)}
+            {renderSection("FUTURES", "FUT", filtered.FUT)}
+            {renderSection("OPTIONS", "OPT", filtered.OPT)}
           </div>
         )}
       </div>

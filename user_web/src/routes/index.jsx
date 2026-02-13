@@ -3,6 +3,7 @@ import { useAuth } from "@contexts/authProvider.jsx";
 import { ProtectedRoute } from "@routes/ProtectedRoute.jsx";
 import Login from "@pages/Login.jsx";
 import Dashboard from "@pages/Dashboard.jsx";
+import Replay from "@pages/Replay.jsx";
 import AboutUs from "@pages/AboutUs.jsx";
 import Page404 from "@pages/Page404.jsx";
 
@@ -38,6 +39,10 @@ const AllRoutes = () => {
         {
           path: "dashboard",
           element: <Dashboard />,
+        },
+        {
+          path: "replay",
+          element: <Replay />,
         },
         {
           path: "aboutus",

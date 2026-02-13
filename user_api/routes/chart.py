@@ -156,7 +156,8 @@ async def instrument_detail(
 async def data_bars_slots(
     instrument_id: str,
     timeframe: str,
-    timestamp_end: Optional[int] = None,
+    bars_timestamp_end: Optional[int] = None,
+    slots_timestamp_end: Optional[int] = None,
     email_id=Depends(auth.verify_access_token),
     pg_conn=Depends(get_pg_conn),
 ):
@@ -164,7 +165,8 @@ async def data_bars_slots(
         pg_conn=pg_conn,
         instrument_id=instrument_id,
         timeframe=timeframe,
-        timestamp_end=timestamp_end,
+        bars_timestamp_end=bars_timestamp_end,
+        slots_timestamp_end=slots_timestamp_end,
     )
 
     return JSONResponse(
