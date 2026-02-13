@@ -105,8 +105,6 @@ async def replay_session_control(
 
 
 @router.delete("/session/{session_id}")
-@router.delete("/session/{session_id}/delete")
-@router.post("/session/{session_id}/delete")
 async def delete_replay_session(
     session_id: str,
     email_id=Depends(auth.verify_access_token),

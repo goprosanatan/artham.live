@@ -28,7 +28,7 @@ export function useReplayApi() {
     },
     deleteSession: async (session_id) => {
       const data = await request(
-        `replay/session/${session_id}/delete`,
+        `replay/session/${session_id}`,
         "DELETE"
       );
       return typeof data === "string" ? JSON.parse(data) : data;

@@ -53,7 +53,7 @@ import csv
 os.chdir(config("DIR_PROJECT", cast=str))
 
 logging.basicConfig(
-    filename=(os.path.join(config("DIR_LOGS", cast=str), "artham_cli.log")),
+    filename=(os.path.join(config("DIR_LOGS", cast=str), "artham_00_cli.log")),
     encoding="utf-8",
     level=logging.DEBUG,
     datefmt="%Y-%m-%d %H:%M:%S %p %Z",

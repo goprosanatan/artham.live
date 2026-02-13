@@ -18,7 +18,7 @@ def time_converter(*args):
 logger = logging.getLogger(__name__)
 logging.Formatter.converter = time_converter
 logging.basicConfig(
-    filename=(os.path.join(config("DIR_LOGS", cast=str), "artham_replay_01_engine1.log")),
+    filename=(os.path.join(config("DIR_LOGS", cast=str), "artham_replay_01_engine.log")),
     encoding="utf-8",
     level=logging.DEBUG,
     datefmt="%Y-%m-%d %H:%M:%S %p %Z",
