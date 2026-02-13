@@ -20,6 +20,7 @@ const Replay = () => {
   const [instruments, setInstruments] = useState([]);
   const [instrumentsLoading, setInstrumentsLoading] = useState(true);
   const [instrumentsError, setInstrumentsError] = useState("");
+  const [restartCountBySession, setRestartCountBySession] = useState({});
   const [form, setForm] = useState({
     instrument_id: "",
     speed: "1",
@@ -175,10 +176,25 @@ const Replay = () => {
     setBusySessionId(session_id);
     setError("");
     try {
+      // Increment restart counter before the restart action completes
+      if (action === "restart") {
+        setRestartCountBySession((prev) => ({
+          ...prev,
+          [session_id]: (prev[session_id] || 0) + 1,
+        }));
+      }
+      
       await controlSession(session_id, action);
       await refreshSessions();
     } catch (e) {
       setError(e?.message || `Failed to ${action} replay session`);
+      // Reset restart counter if the action failed
+      if (action === "restart") {
+        setRestartCountBySession((prev) => ({
+          ...prev,
+          [session_id]: (prev[session_id] || 0) - 1,
+        }));
+      }
     } finally {
       setBusySessionId("");
     }
@@ -602,7 +618,7 @@ const Replay = () => {
         <div className="flex-1 min-w-0 rounded-lg border border-gray-300 bg-white/70 dark:bg-gray-700 dark:border-gray-600 overflow-hidden">
           {selectedSession && Number.isFinite(selectedInstrumentId) ? (
             <ChartHorizontal
-              key={selectedSession.session_id}
+              key={`${selectedSession.session_id}-${restartCountBySession[selectedSession.session_id] || 0}`}
               instrumentId={selectedInstrumentId}
               replaySessionId={selectedSession.session_id}
               replayBarsTimestampEnd={
