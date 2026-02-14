@@ -90,7 +90,7 @@ const computeGap = (w) => {
 
 // Validates selector levels to ensure target/stop sit on opposite sides of entry.
 // Returns direction (long/short), readiness flag, and an error message when invalid.
-const validateSelectorLevels = (levels) => {
+const validateTradeSelectorLevels = (levels) => {
   const entry = levels.entry?.price;
   const target = levels.target?.price;
   const stop = levels.stop?.price;
@@ -201,8 +201,8 @@ export default function ChartHorizontal({
   const [hasMoreData, setHasMoreData] = useState(true);
   const [loadError, setLoadError] = useState("");
   const [segmentList, setSegmentList] = useState([]);
-  const [selectorActive, setSelectorActive] = useState(false); // false = crosshair, true = trade selector
-  const [selectorLevels, setSelectorLevels] = useState({
+  const [tradeSelectorActive, setTradeSelectorActive] = useState(false); // false = crosshair, true = trade selector
+  const [tradeSelectorLevels, setTradeSelectorLevels] = useState({
     entry: { price: null, startIndex: null, endIndex: null },
     target: { price: null, startIndex: null, endIndex: null },
     stop: { price: null, startIndex: null, endIndex: null },
@@ -211,13 +211,14 @@ export default function ChartHorizontal({
   // Bar selector state for replay creation
   const [barSelectorActive, setBarSelectorActive] = useState(false);
   const [barSelectorRange, setBarSelectorRange] = useState({ startIndex: null, endIndex: null });
+  const [barSelectorDayWarning, setBarSelectorDayWarning] = useState("");
   const barSelectorDragRef = useRef(null); // { anchorIndex: number } during drag
   const navigate = useNavigate();
   const [selectorStep, setSelectorStep] = useState("entry"); // entry -> stop -> target
   const [submittingOrder, setSubmittingOrder] = useState(false);
   const [submitToast, setSubmitToast] = useState({ message: "", tone: "success" });
   const [orderQty, setOrderQty] = useState(1);
-  const crosshairEnabled = !selectorActive;
+  const crosshairEnabled = !tradeSelectorActive;
   const selectorDragRef = useRef(null); // Active drag target: entry | target | stop
   const lastPannedOrderIdRef = useRef(null); // Track which order we auto-panned to
   // State to trigger WebGL gridline update after label Xs are set
@@ -264,13 +265,23 @@ export default function ChartHorizontal({
 
   // Reset selector levels whenever mode toggles
   useEffect(() => {
-    setSelectorLevels({
+    setTradeSelectorLevels({
       entry: { price: null, startIndex: null, endIndex: null },
       target: { price: null, startIndex: null, endIndex: null },
       stop: { price: null, startIndex: null, endIndex: null },
     });
     setSelectorStep("entry");
-  }, [selectorActive]);
+  }, [tradeSelectorActive]);
+
+  // Disable trade selector when replay mode is active
+  useEffect(() => {
+    if (!replaySessionId) return;
+    setTradeSelectorActive(false);
+    setTradeSelectorLevels({ entry: null, target: null, stop: null });
+    setSelectorStep("entry");
+    setSelectorError("");
+    selectorDragRef.current = null;
+  }, [replaySessionId]);
 
   // Sync timeframe state to ref whenever it changes
   // Websocket onBar handler uses this to filter bars by type (bars.1m vs bars.1D)
@@ -280,8 +291,8 @@ export default function ChartHorizontal({
 
   // Reset and disable trade selector when timeframe or instrument changes
   useEffect(() => {
-    setSelectorActive(false);
-    setSelectorLevels({
+    setTradeSelectorActive(false);
+    setTradeSelectorLevels({
       entry: { price: null, startIndex: null, endIndex: null },
       target: { price: null, startIndex: null, endIndex: null },
       stop: { price: null, startIndex: null, endIndex: null },
@@ -292,6 +303,7 @@ export default function ChartHorizontal({
     // Also reset bar selector
     setBarSelectorActive(false);
     setBarSelectorRange({ startIndex: null, endIndex: null });
+    setBarSelectorDayWarning("");
     barSelectorDragRef.current = null;
   }, [timeframe, selectedInstrumentId]);
 
@@ -910,8 +922,8 @@ export default function ChartHorizontal({
     mouseRef.current = mouse;
   }, [mouse]);
   const selectorValidation = useMemo(
-    () => validateSelectorLevels(selectorLevels),
-    [selectorLevels]
+    () => validateTradeSelectorLevels(tradeSelectorLevels),
+    [tradeSelectorLevels]
   );
   const selectorReady = selectorValidation.ready;
 
@@ -986,20 +998,20 @@ export default function ChartHorizontal({
     const transaction_type = direction === "long" ? "BUY" : "SELL";
 
     // Snap prices to tick size multiples
-    const snappedEntry = snapToTickSize(selectorLevels.entry?.price, tickSize);
-    const snappedTarget = snapToTickSize(selectorLevels.target?.price, tickSize);
-    const snappedStop = snapToTickSize(selectorLevels.stop?.price, tickSize);
+    const snappedEntry = snapToTickSize(tradeSelectorLevels.entry?.price, tickSize);
+    const snappedTarget = snapToTickSize(tradeSelectorLevels.target?.price, tickSize);
+    const snappedStop = snapToTickSize(tradeSelectorLevels.stop?.price, tickSize);
 
     const entryRange = resolveLevelRange({
-      ...selectorLevels.entry,
+      ...tradeSelectorLevels.entry,
       endIndex: lastActualIndex,
     });
     const targetRange = resolveLevelRange({
-      ...selectorLevels.target,
+      ...tradeSelectorLevels.target,
       endIndex: lastActualIndex,
     });
     const stopRange = resolveLevelRange({
-      ...selectorLevels.stop,
+      ...tradeSelectorLevels.stop,
       endIndex: lastActualIndex,
     });
 
@@ -1026,13 +1038,13 @@ export default function ChartHorizontal({
     try {
       await submitBracket(payload);
       // Clear selector UI while still submitting
-      setSelectorLevels({
+      setTradeSelectorLevels({
         entry: { price: null, startIndex: null, endIndex: null },
         target: { price: null, startIndex: null, endIndex: null },
         stop: { price: null, startIndex: null, endIndex: null },
       });
       setSelectorStep("entry");
-      setSelectorActive(false);
+      setTradeSelectorActive(false);
       
       // Wait for order list to update via callback before showing success
       if (onOrderSubmitted) {
@@ -1259,13 +1271,13 @@ export default function ChartHorizontal({
 
   // If an external order is selected, clear the trade selector first
   useEffect(() => {
-    if (!externalOrder || !selectorActive) return;
-    setSelectorActive(false);
-    setSelectorLevels({ entry: null, target: null, stop: null });
+    if (!externalOrder || !tradeSelectorActive) return;
+    setTradeSelectorActive(false);
+    setTradeSelectorLevels({ entry: null, target: null, stop: null });
     setSelectorStep("entry");
     setSelectorError("");
     selectorDragRef.current = null;
-  }, [externalOrder, selectorActive]);
+  }, [externalOrder, tradeSelectorActive]);
 
   // Auto-pan to selected external order's range start so its levels are in view
   useEffect(() => {
@@ -2629,9 +2641,9 @@ export default function ChartHorizontal({
           const infoWidth = maxWidth + padding * 2;
           const infoHeight = dateRangeText ? 48 : 32;
           
-          // Position info panel at top center of selection
+          // Position info panel at bottom center of selection
           const infoX = selectionLeft + (selectionWidth - infoWidth) / 2;
-          const infoY = 12;
+          const infoY = selectionTop + selectionHeight - infoHeight - 12;
           
           // Draw info panel background with shadow
           chartOverlayContext.shadowColor = "rgba(0, 0, 0, 0.3)";
@@ -2668,6 +2680,38 @@ export default function ChartHorizontal({
           } else {
             chartOverlayContext.fillText(infoText, infoX + infoWidth / 2, infoY + infoHeight / 2);
           }
+        }
+
+        if (barSelectorDayWarning) {
+          chartOverlayContext.font = "12px sans-serif";
+          const textWidth = Math.ceil(
+            chartOverlayContext.measureText(barSelectorDayWarning).width
+          );
+          const paddingX = 12;
+          const paddingY = 6;
+          const boxW = textWidth + paddingX * 2;
+          const boxH = 12 + paddingY * 2;
+          const boxX = Math.max(6, (chartAreaW - boxW) / 2);
+          const boxY = 28;
+
+          chartOverlayContext.fillStyle =
+            colors.warningBg || "rgba(251, 191, 36, 0.9)";
+          chartOverlayContext.strokeStyle =
+            colors.warningBorder || "rgba(251, 191, 36, 1)";
+          chartOverlayContext.lineWidth = 1;
+          roundRectPath(chartOverlayContext, boxX, boxY, boxW, boxH, 6);
+          chartOverlayContext.fill();
+          chartOverlayContext.stroke();
+
+          chartOverlayContext.fillStyle =
+            colors.warningText || "#111827";
+          chartOverlayContext.textAlign = "center";
+          chartOverlayContext.textBaseline = "middle";
+          chartOverlayContext.fillText(
+            barSelectorDayWarning,
+            boxX + boxW / 2,
+            boxY + boxH / 2 + 0.5
+          );
         }
       }
     }
@@ -2708,7 +2752,7 @@ export default function ChartHorizontal({
     }
 
     // SECTION 2: Entry/Target/Stop selector overlays
-    if (selectorActive) {
+    if (tradeSelectorActive) {
       const priceStep = choosePriceStep(scale.range, timeframe);
       const priceDecimals = Math.max(2, decimalsForStep(priceStep));
 
@@ -2799,7 +2843,7 @@ export default function ChartHorizontal({
       };
 
       // Preview the next placement under the cursor until the level is set
-      if (selectorLevels[selectorStep]?.price == null && mouseYInner != null) {
+      if (tradeSelectorLevels[selectorStep]?.price == null && mouseYInner != null) {
         const effectiveHeight = glHeight - TOP - BOTTOM;
         const previewRawPrice =
           scale.max -
@@ -2833,18 +2877,18 @@ export default function ChartHorizontal({
         );
       }
 
-      drawLevel("Entry", selectorLevels.entry, colors.orderEntryColor);
-      drawLevel("Target", selectorLevels.target, colors.orderTargetColor);
-      drawLevel("Stoploss", selectorLevels.stop, colors.orderStopColor);
+      drawLevel("Entry", tradeSelectorLevels.entry, colors.orderEntryColor);
+      drawLevel("Target", tradeSelectorLevels.target, colors.orderTargetColor);
+      drawLevel("Stoploss", tradeSelectorLevels.stop, colors.orderStopColor);
 
       // Draw risk-reward ratio indicator as a single vertical dotted line at end index
-      if (selectorReady && selectorLevels.entry?.price != null && 
-          selectorLevels.target?.price != null && selectorLevels.stop?.price != null &&
-          selectorLevels.entry?.endIndex != null) {
-        const entryPrice = selectorLevels.entry.price;
-        const targetPrice = selectorLevels.target.price;
-        const stopPrice = selectorLevels.stop.price;
-        const endIndex = selectorLevels.entry.endIndex;
+      if (selectorReady && tradeSelectorLevels.entry?.price != null && 
+          tradeSelectorLevels.target?.price != null && tradeSelectorLevels.stop?.price != null &&
+          tradeSelectorLevels.entry?.endIndex != null) {
+        const entryPrice = tradeSelectorLevels.entry.price;
+        const targetPrice = tradeSelectorLevels.target.price;
+        const stopPrice = tradeSelectorLevels.stop.price;
+        const endIndex = tradeSelectorLevels.entry.endIndex;
         
         const risk = Math.abs(entryPrice - stopPrice);
         const reward = Math.abs(targetPrice - entryPrice);
@@ -3380,10 +3424,10 @@ export default function ChartHorizontal({
     barWidth,
     is_intraday,
     crosshairEnabled,
-    selectorActive,
-    selectorLevels.entry,
-    selectorLevels.target,
-    selectorLevels.stop,
+    tradeSelectorActive,
+    tradeSelectorLevels.entry,
+    tradeSelectorLevels.target,
+    tradeSelectorLevels.stop,
     selectorStep,
     selectorReady,
     selectorValidation.direction,
@@ -3394,6 +3438,7 @@ export default function ChartHorizontal({
     barSelectorRange,
     barSelectorValid,
     barSelectorInfo,
+    barSelectorDayWarning,
   ]);
 
   /**
@@ -3524,16 +3569,16 @@ export default function ChartHorizontal({
 
     // Hit test for selector lines to enable drag once placed
     const selectorHitTest = (pointerY) => {
-      if (!selectorActive) return null;
+      if (!tradeSelectorActive) return null;
       const innerY = pointerY - TIME_SCALE_H;
       if (innerY < 0 || innerY > glHeight) return null;
       const tolerancePx = 10;
       let closest = null;
       let closestDist = Infinity;
       const candidates = [
-        ["entry", selectorLevels.entry],
-        ["target", selectorLevels.target],
-        ["stop", selectorLevels.stop],
+        ["entry", tradeSelectorLevels.entry],
+        ["target", tradeSelectorLevels.target],
+        ["stop", tradeSelectorLevels.stop],
       ];
       for (const [key, value] of candidates) {
         if (value?.price == null) continue;
@@ -3564,6 +3609,14 @@ export default function ChartHorizontal({
       setMouseYInner(null); // Clear price hover
       velRef.current = 0; // Stop any inertia animation
       selectorDragRef.current = null;
+      setBarSelectorDayWarning("");
+    };
+
+    const getDayKey = (ts) => {
+      const date = new Date(ts);
+      const month = String(date.getMonth() + 1).padStart(2, "0");
+      const day = String(date.getDate()).padStart(2, "0");
+      return `${date.getFullYear()}-${month}-${day}`;
     };
 
     /**
@@ -3593,10 +3646,42 @@ export default function ChartHorizontal({
       if (barSelectorDragRef.current) {
         const currentBarIndex = calculateHoverIndex(pointerX);
         if (currentBarIndex != null) {
-          setBarSelectorRange((prev) => ({
-            ...prev,
-            endIndex: currentBarIndex,
-          }));
+          const anchorIndex = barSelectorDragRef.current.anchorIndex;
+          const anchorBar = timelineBars[anchorIndex];
+          const currentBar = timelineBars[currentBarIndex];
+
+          if (anchorBar && currentBar) {
+            const anchorKey = getDayKey(anchorBar.date);
+            const currentKey = getDayKey(currentBar.date);
+
+            if (anchorKey !== currentKey) {
+              setBarSelectorDayWarning("Selection is limited to a single date.");
+              const direction = currentBarIndex >= anchorIndex ? 1 : -1;
+              let clampedIndex = anchorIndex;
+              let idx = anchorIndex + direction;
+              while (idx >= 0 && idx < timelineBars.length) {
+                const bar = timelineBars[idx];
+                if (bar && getDayKey(bar.date) !== anchorKey) break;
+                if (bar) clampedIndex = idx;
+                idx += direction;
+              }
+              setBarSelectorRange((prev) => ({
+                ...prev,
+                endIndex: clampedIndex,
+              }));
+            } else {
+              setBarSelectorDayWarning("");
+              setBarSelectorRange((prev) => ({
+                ...prev,
+                endIndex: currentBarIndex,
+              }));
+            }
+          } else {
+            setBarSelectorRange((prev) => ({
+              ...prev,
+              endIndex: currentBarIndex,
+            }));
+          }
         }
         return;
       }
@@ -3605,13 +3690,13 @@ export default function ChartHorizontal({
       if (selectorDragRef.current) {
         const rawPrice = chartPriceFromPointer(pointerY);
         const updatedPrice = snapToTickSize(rawPrice, tickSize);
-        setSelectorLevels((prev) => {
+        setTradeSelectorLevels((prev) => {
           const current = prev[selectorDragRef.current] || {};
           const next = {
             ...prev,
             [selectorDragRef.current]: { ...current, price: updatedPrice },
           };
-          const validation = validateSelectorLevels(next);
+          const validation = validateTradeSelectorLevels(next);
           if (validation.error) {
             setSelectorError(validation.error);
             return prev;
@@ -3657,6 +3742,7 @@ export default function ChartHorizontal({
         if (barIndex != null) {
           barSelectorDragRef.current = { anchorIndex: barIndex };
           setBarSelectorRange({ startIndex: barIndex, endIndex: barIndex });
+          setBarSelectorDayWarning("");
           try {
             target.setPointerCapture?.(event.pointerId ?? 0);
           } catch {}
@@ -3665,7 +3751,7 @@ export default function ChartHorizontal({
       }
 
       // Selector mode: capture level clicks instead of panning
-      if (selectorActive) {
+      if (tradeSelectorActive) {
         const hitLevel = selectorHitTest(pointerY);
         const innerPointerY = pointerY - TIME_SCALE_H;
         if (hitLevel) {
@@ -3684,7 +3770,7 @@ export default function ChartHorizontal({
         const rawPrice = chartPriceFromPointer(pointerY);
         const priceAtPointer = snapToTickSize(rawPrice, tickSize);
         const barIndexAtPointer = calculateHoverIndex(pointerX);
-        setSelectorLevels((prev) => {
+        setTradeSelectorLevels((prev) => {
           const rawStartIndex =
             barIndexAtPointer != null
               ? barIndexAtPointer
@@ -3713,7 +3799,7 @@ export default function ChartHorizontal({
               : {}),
           };
 
-          const validation = validateSelectorLevels(next);
+          const validation = validateTradeSelectorLevels(next);
           if (validation.error) {
             setSelectorError(validation.error);
             return prev;
@@ -3757,13 +3843,13 @@ export default function ChartHorizontal({
         const rawPrice = chartPriceFromPointer(pointerY);
         const updatedPrice = snapToTickSize(rawPrice, tickSize);
         const innerPointerY = pointerY - TIME_SCALE_H;
-        setSelectorLevels((prev) => {
+        setTradeSelectorLevels((prev) => {
           const current = prev[selectorDragRef.current] || {};
           const next = {
             ...prev,
             [selectorDragRef.current]: { ...current, price: updatedPrice },
           };
-          const validation = validateSelectorLevels(next);
+          const validation = validateTradeSelectorLevels(next);
           if (validation.error) {
             setSelectorError(validation.error);
             return prev;
@@ -3918,11 +4004,11 @@ export default function ChartHorizontal({
     minOffsetLimit,
     timelineBars.length,
     lastActualIndex,
-    selectorActive,
+    tradeSelectorActive,
     selectorStep,
-    selectorLevels.entry,
-    selectorLevels.target,
-    selectorLevels.stop,
+    tradeSelectorLevels.entry,
+    tradeSelectorLevels.target,
+    tradeSelectorLevels.stop,
     tickSize,
     barSelectorActive,
     barSelectorRange,
@@ -4059,7 +4145,7 @@ export default function ChartHorizontal({
           </div>
         </div>
       )}
-      {!!selectorError && selectorActive && (
+      {!!selectorError && tradeSelectorActive && (
         <div className="absolute inset-x-0 top-12 flex items-center justify-center">
           <div
             className="px-3 py-1.5 rounded text-xs"
@@ -4076,7 +4162,7 @@ export default function ChartHorizontal({
       {!!submitToast.message && (
         <div
           className="absolute inset-x-0 flex items-center justify-center pointer-events-none"
-          style={{ top: TIME_SCALE_H + 24 }}
+          style={{ top: TIME_SCALE_H + 32 }}
         >
           <div
             className="px-3 py-1.5 rounded text-xs shadow"
@@ -4218,11 +4304,19 @@ export default function ChartHorizontal({
                 onClick={(e) => {
                   e.stopPropagation();
                   e.preventDefault();
-                  setBarSelectorActive((active) => !active);
-                  if (!barSelectorActive) {
-                    // Reset selection when activating
-                    setBarSelectorRange({ startIndex: null, endIndex: null });
-                  }
+                  setBarSelectorActive((active) => {
+                    const next = !active;
+                    if (next) {
+                      setTradeSelectorActive(false);
+                      setTradeSelectorLevels({ entry: null, target: null, stop: null });
+                      setSelectorStep("entry");
+                      setSelectorError("");
+                      if (onClearOrder) onClearOrder();
+                      // Reset selection when activating
+                      setBarSelectorRange({ startIndex: null, endIndex: null });
+                    }
+                    return next;
+                  });
                 }}
                 className="ml-4 px-2.5 py-2 text-xs rounded border transition-colors cursor-pointer relative hover:opacity-80"
                 style={{
@@ -4282,82 +4376,94 @@ export default function ChartHorizontal({
             </>
           )}
           
-          <button
-            type="button"
-            onClick={(e) => {
-              e.stopPropagation();
-              e.preventDefault();
-              setSelectorActive((active) => !active);
-              if (onClearOrder) onClearOrder();
-            }}
-            className="ml-4 px-2.5 py-2 text-xs rounded border transition-colors cursor-pointer relative hover:opacity-80"
-            style={{
-              backgroundColor:
-                selectorActive ? colors.activeBg : colors.controlBg,
-              borderColor:
-                selectorActive ? colors.activeBorder : colors.controlBorder,
-              color: selectorActive ? colors.activeText : colors.controlText,
-            }}
-          >
-            Select Trade
-          </button>
-          <input
-            type="text"
-            disabled={!selectorActive}
-            value={orderQty}
-            onChange={(e) => setOrderQty(e.target.value)}
-            placeholder="Quantity"
-            className="px-2 py-2 text-xs rounded border w-20 text-center disabled:opacity-50 disabled:cursor-not-allowed"
-            style={{
-              backgroundColor: colors.controlBg,
-              borderColor: colors.controlBorder,
-              color: colors.controlText,
-            }}
-            title="Order quantity (enabled when trade selector is active)"
-          />
-          <button
-            type="button"
-            disabled={!selectorReady}
-            onClick={(e) => {
-              e.stopPropagation();
-              e.preventDefault();
-              handleEnterTrade();
-            }}
-            className="px-2.5 py-2 text-xs rounded border transition-colors cursor-pointer relative hover:opacity-80 disabled:opacity-50 disabled:cursor-not-allowed"
-            style={{
-              backgroundColor: selectorReady
-                ? colors.buttonPrimaryBg
-                : colors.controlBg,
-              borderColor: selectorReady
-                ? colors.buttonPrimaryBorder
-                : colors.controlBorder,
-              color: selectorReady ? colors.priceChipText : colors.controlText,
-            }}
-            title="Enter trade when all levels are set"
-          >
-            {submittingOrder ? "Submitting..." : "Enter Trade"}
-          </button>
-          <button
-            type="button"
-            onClick={(e) => {
-              e.stopPropagation();
-              e.preventDefault();
-              setSelectorActive(false);
-              setSelectorLevels({ entry: null, target: null, stop: null });
-              setSelectorStep("entry");
-              setSelectorError("");
-              if (onClearOrder) onClearOrder();
-            }}
-            className="mr-4 px-2.5 py-2 text-xs rounded border transition-colors cursor-pointer relative hover:opacity-80"
-            style={{
-              backgroundColor: colors.controlBg,
-              borderColor: colors.controlBorder,
-              color: colors.controlText,
-            }}
-            title="Clear selector and re-enable crosshair"
-          >
-            Clear
-          </button>
+          {!replaySessionId && (
+            <>
+              <button
+                type="button"
+                onClick={(e) => {
+                  e.stopPropagation();
+                  e.preventDefault();
+                  setTradeSelectorActive((active) => {
+                    const next = !active;
+                    if (next) {
+                      setBarSelectorActive(false);
+                      setBarSelectorRange({ startIndex: null, endIndex: null });
+                      barSelectorDragRef.current = null;
+                    }
+                    return next;
+                  });
+                  if (onClearOrder) onClearOrder();
+                }}
+                className="ml-4 px-2.5 py-2 text-xs rounded border transition-colors cursor-pointer relative hover:opacity-80"
+                style={{
+                  backgroundColor:
+                    tradeSelectorActive ? colors.activeBg : colors.controlBg,
+                  borderColor:
+                    tradeSelectorActive ? colors.activeBorder : colors.controlBorder,
+                  color: tradeSelectorActive ? colors.activeText : colors.controlText,
+                }}
+              >
+                Select Trade
+              </button>
+              <input
+                type="text"
+                disabled={!tradeSelectorActive}
+                value={orderQty}
+                onChange={(e) => setOrderQty(e.target.value)}
+                placeholder="Quantity"
+                className="px-2 py-2 text-xs rounded border w-20 text-center disabled:opacity-50 disabled:cursor-not-allowed"
+                style={{
+                  backgroundColor: colors.controlBg,
+                  borderColor: colors.controlBorder,
+                  color: colors.controlText,
+                }}
+                title="Order quantity (enabled when trade selector is active)"
+              />
+              <button
+                type="button"
+                disabled={!selectorReady}
+                onClick={(e) => {
+                  e.stopPropagation();
+                  e.preventDefault();
+                  handleEnterTrade();
+                }}
+                className="px-2.5 py-2 text-xs rounded border transition-colors cursor-pointer relative hover:opacity-80 disabled:opacity-50 disabled:cursor-not-allowed"
+                style={{
+                  backgroundColor: selectorReady
+                    ? colors.buttonPrimaryBg
+                    : colors.controlBg,
+                  borderColor: selectorReady
+                    ? colors.buttonPrimaryBorder
+                    : colors.controlBorder,
+                  color: selectorReady ? colors.priceChipText : colors.controlText,
+                }}
+                title="Enter trade when all levels are set"
+              >
+                {submittingOrder ? "Submitting..." : "Enter Trade"}
+              </button>
+              <button
+                type="button"
+                onClick={(e) => {
+                  e.stopPropagation();
+                  e.preventDefault();
+                  setTradeSelectorActive(false);
+                  setTradeSelectorLevels({ entry: null, target: null, stop: null });
+                  setSelectorStep("entry");
+                  setSelectorError("");
+                  if (onClearOrder) onClearOrder();
+                }}
+                className="mr-4 px-2.5 py-2 text-xs rounded border transition-colors cursor-pointer relative hover:opacity-80"
+                style={{
+                  backgroundColor: colors.controlBg,
+                  borderColor: colors.controlBorder,
+                  color: colors.controlText,
+                }}
+                title="Clear selector and re-enable crosshair"
+              >
+                Clear
+              </button>
+            </>
+          )}
         </div>
         {["1m", "1D"].map((t) => (
           <button
