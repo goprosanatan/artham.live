@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useRef, useState, useCallback } from "react";
+import { useNavigate } from "react-router-dom";
 import { useChartApi, useOrderApi } from "@components/Chart/__API.js";
 import { connectLive } from "@components/Chart/__Websocket.js";
 import {
@@ -202,6 +203,12 @@ export default function ChartHorizontal({
     target: { price: null, startIndex: null, endIndex: null },
     stop: { price: null, startIndex: null, endIndex: null },
   });
+  
+  // Bar selector state for replay creation
+  const [barSelectorActive, setBarSelectorActive] = useState(false);
+  const [barSelectorRange, setBarSelectorRange] = useState({ startIndex: null, endIndex: null });
+  const barSelectorDragRef = useRef(null); // { anchorIndex: number } during drag
+  const navigate = useNavigate();
   const [selectorStep, setSelectorStep] = useState("entry"); // entry -> stop -> target
   const [submittingOrder, setSubmittingOrder] = useState(false);
   const [submitToast, setSubmitToast] = useState({ message: "", tone: "success" });
@@ -278,6 +285,10 @@ export default function ChartHorizontal({
     setSelectorStep("entry");
     setSelectorError("");
     selectorDragRef.current = null;
+    // Also reset bar selector
+    setBarSelectorActive(false);
+    setBarSelectorRange({ startIndex: null, endIndex: null });
+    barSelectorDragRef.current = null;
   }, [timeframe, selectedInstrumentId]);
 
   // Sync selectedInstrumentId state to ref whenever it changes
@@ -1166,6 +1177,34 @@ export default function ChartHorizontal({
     }
     return -1;
   }, [timelineBars]);
+
+  // Bar selector validation and info (must come after timelineBars is defined)
+  const barSelectorValid = useMemo(() => {
+    const { startIndex, endIndex } = barSelectorRange;
+    if (startIndex == null || endIndex == null) return false;
+    if (startIndex === endIndex) return false;
+    if (startIndex < 0 || endIndex < 0) return false;
+    if (startIndex >= timelineBars.length || endIndex >= timelineBars.length) return false;
+    return true;
+  }, [barSelectorRange, timelineBars.length]);
+  
+  const barSelectorInfo = useMemo(() => {
+    if (!barSelectorValid) return null;
+    const { startIndex, endIndex } = barSelectorRange;
+    const minIdx = Math.min(startIndex, endIndex);
+    const maxIdx = Math.max(startIndex, endIndex);
+    const count = maxIdx - minIdx + 1;
+    const startBar = timelineBars[minIdx];
+    const endBar = timelineBars[maxIdx];
+    if (!startBar || !endBar) return null;
+    return {
+      count,
+      startTs: startBar.date,
+      endTs: endBar.date,
+      startIndex: minIdx,
+      endIndex: maxIdx,
+    };
+  }, [barSelectorValid, barSelectorRange, timelineBars]);
 
   // Clamp how far we can pan right so at least one real bar stays visible
   const minOffsetLimit = useMemo(() => {
@@ -2462,6 +2501,156 @@ export default function ChartHorizontal({
     // Clear canvas (removes previous overlays)
     chartOverlayContext.clearRect(0, 0, chartAreaW, glHeight);
 
+    // SECTION 0: Bar Selector (for replay creation)
+    // Draw selection box with enhanced visuals when bar selector is active
+    if (barSelectorActive) {
+      const { startIndex, endIndex } = barSelectorRange;
+      
+      if (startIndex != null) {
+        const endIdx = endIndex != null ? endIndex : startIndex;
+        const minIdx = Math.min(startIndex, endIdx);
+        const maxIdx = Math.max(startIndex, endIdx);
+        
+        // Calculate position and size
+        const selectionLeft = LEFT + visibleRange.xOff + minIdx * colStride;
+        const selectionWidth = (maxIdx - minIdx + 1) * colStride;
+        const selectionTop = 0;
+        const selectionHeight = glHeight;
+        
+        // Draw gradient fill for better visual depth
+        const gradient = chartOverlayContext.createLinearGradient(
+          selectionLeft, 
+          selectionTop, 
+          selectionLeft, 
+          selectionHeight
+        );
+        gradient.addColorStop(0, "rgba(59, 130, 246, 0.25)");
+        gradient.addColorStop(0.5, "rgba(59, 130, 246, 0.15)");
+        gradient.addColorStop(1, "rgba(59, 130, 246, 0.25)");
+        chartOverlayContext.fillStyle = gradient;
+        chartOverlayContext.fillRect(selectionLeft, selectionTop, selectionWidth, selectionHeight);
+        
+        // Draw left edge marker (vertical bar)
+        chartOverlayContext.fillStyle = "rgba(59, 130, 246, 0.9)";
+        chartOverlayContext.fillRect(selectionLeft - 2, selectionTop, 4, selectionHeight);
+        
+        // Draw right edge marker (vertical bar)
+        chartOverlayContext.fillStyle = "rgba(59, 130, 246, 0.9)";
+        chartOverlayContext.fillRect(selectionLeft + selectionWidth - 2, selectionTop, 4, selectionHeight);
+        
+        // Draw top and bottom border with solid lines
+        chartOverlayContext.strokeStyle = "rgba(59, 130, 246, 0.8)";
+        chartOverlayContext.lineWidth = 2;
+        chartOverlayContext.beginPath();
+        chartOverlayContext.moveTo(selectionLeft, selectionTop);
+        chartOverlayContext.lineTo(selectionLeft + selectionWidth, selectionTop);
+        chartOverlayContext.moveTo(selectionLeft, selectionTop + selectionHeight);
+        chartOverlayContext.lineTo(selectionLeft + selectionWidth, selectionTop + selectionHeight);
+        chartOverlayContext.stroke();
+        
+        // Draw edge handles (triangles/arrows) at left and right
+        const handleSize = 8;
+        const handleY = selectionHeight / 2;
+        
+        // Left handle (pointing left)
+        chartOverlayContext.fillStyle = "rgba(59, 130, 246, 1)";
+        chartOverlayContext.beginPath();
+        chartOverlayContext.moveTo(selectionLeft - 6, handleY);
+        chartOverlayContext.lineTo(selectionLeft + 2, handleY - handleSize);
+        chartOverlayContext.lineTo(selectionLeft + 2, handleY + handleSize);
+        chartOverlayContext.closePath();
+        chartOverlayContext.fill();
+        
+        // Right handle (pointing right)
+        chartOverlayContext.beginPath();
+        chartOverlayContext.moveTo(selectionLeft + selectionWidth + 6, handleY);
+        chartOverlayContext.lineTo(selectionLeft + selectionWidth - 2, handleY - handleSize);
+        chartOverlayContext.lineTo(selectionLeft + selectionWidth - 2, handleY + handleSize);
+        chartOverlayContext.closePath();
+        chartOverlayContext.fill();
+        
+        // Draw selection info if valid
+        if (barSelectorValid && barSelectorInfo) {
+          // Get start and end bar data for dates
+          const startBar = timelineBars[barSelectorInfo.startIndex];
+          const endBar = timelineBars[barSelectorInfo.endIndex];
+          
+          let dateRangeText = "";
+          if (startBar && endBar) {
+            const startDate = new Date(startBar.date);
+            const endDate = new Date(endBar.date);
+            
+            if (timeframe === "1D" || !is_intraday) {
+              // For daily, show date only
+              dateRangeText = `${startDate.toLocaleDateString()} - ${endDate.toLocaleDateString()}`;
+            } else {
+              // For intraday, show date and time
+              const formatDateTime = (d) => {
+                const date = d.toLocaleDateString();
+                const time = d.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+                return `${date} ${time}`;
+              };
+              dateRangeText = `${formatDateTime(startDate)} - ${formatDateTime(endDate)}`;
+            }
+          }
+          
+          const infoText = `${barSelectorInfo.count} bars selected`;
+          
+          // Enhanced info panel styling
+          chartOverlayContext.font = "600 13px sans-serif";
+          const countWidth = chartOverlayContext.measureText(infoText).width;
+          
+          chartOverlayContext.font = "11px sans-serif";
+          const dateWidth = chartOverlayContext.measureText(dateRangeText).width;
+          
+          const maxWidth = Math.max(countWidth, dateWidth);
+          const padding = 12;
+          const infoWidth = maxWidth + padding * 2;
+          const infoHeight = dateRangeText ? 48 : 32;
+          
+          // Position info panel at top center of selection
+          const infoX = selectionLeft + (selectionWidth - infoWidth) / 2;
+          const infoY = 12;
+          
+          // Draw info panel background with shadow
+          chartOverlayContext.shadowColor = "rgba(0, 0, 0, 0.3)";
+          chartOverlayContext.shadowBlur = 8;
+          chartOverlayContext.shadowOffsetX = 0;
+          chartOverlayContext.shadowOffsetY = 2;
+          
+          chartOverlayContext.fillStyle = "rgba(59, 130, 246, 0.95)";
+          chartOverlayContext.strokeStyle = "rgba(255, 255, 255, 0.3)";
+          chartOverlayContext.lineWidth = 1;
+          roundRectPath(chartOverlayContext, infoX, infoY, infoWidth, infoHeight, 6);
+          chartOverlayContext.fill();
+          chartOverlayContext.stroke();
+          
+          // Reset shadow
+          chartOverlayContext.shadowColor = "transparent";
+          chartOverlayContext.shadowBlur = 0;
+          chartOverlayContext.shadowOffsetX = 0;
+          chartOverlayContext.shadowOffsetY = 0;
+          
+          // Draw count text (bold, larger)
+          chartOverlayContext.fillStyle = "rgba(255, 255, 255, 1)";
+          chartOverlayContext.font = "600 13px sans-serif";
+          chartOverlayContext.textAlign = "center";
+          chartOverlayContext.textBaseline = "middle";
+          
+          if (dateRangeText) {
+            chartOverlayContext.fillText(infoText, infoX + infoWidth / 2, infoY + 14);
+            
+            // Draw date range text (smaller, lighter)
+            chartOverlayContext.fillStyle = "rgba(255, 255, 255, 0.9)";
+            chartOverlayContext.font = "11px sans-serif";
+            chartOverlayContext.fillText(dateRangeText, infoX + infoWidth / 2, infoY + 32);
+          } else {
+            chartOverlayContext.fillText(infoText, infoX + infoWidth / 2, infoY + infoHeight / 2);
+          }
+        }
+      }
+    }
+
     // SECTION 1: Draw live price line (always visible if we have bars)
     // This dashed horizontal line tracks the current market price (last bar close),
     // giving users an instant visual reference for where the market is right now.
@@ -3180,6 +3369,10 @@ export default function ChartHorizontal({
     tickSize,
     externalOrder,
     findIndexByTimestamp,
+    barSelectorActive,
+    barSelectorRange,
+    barSelectorValid,
+    barSelectorInfo,
   ]);
 
   /**
@@ -3201,8 +3394,9 @@ export default function ChartHorizontal({
       const lastRealWidth =
         lastActualIndex >= 0 ? (lastActualIndex + 1) * colStride : 0;
       const totalWidth = lastRealWidth || mappedBars.length * colStride;
-      // Right-align to last real bar; ignore placeholders for initial view
-      setOffsetX(Math.min(0, chartAreaW - LEFT - RIGHT - totalWidth));
+      // Position bars at 70% with 30% empty space on right for new candles
+      const usableWidth = chartAreaW - LEFT - RIGHT;
+      setOffsetX(Math.min(0, usableWidth * 0.7 - totalWidth));
       didInitialCenterRef.current = true;
     }
 
@@ -3374,6 +3568,18 @@ export default function ChartHorizontal({
       // Calculate Y position relative to the chart area (subtracting top UI/TimeScale)
       const innerPointerY = pointerY - TIME_SCALE_H;
 
+      // Bar selector dragging: update end index
+      if (barSelectorDragRef.current) {
+        const currentBarIndex = calculateHoverIndex(pointerX);
+        if (currentBarIndex != null) {
+          setBarSelectorRange((prev) => ({
+            ...prev,
+            endIndex: currentBarIndex,
+          }));
+        }
+        return;
+      }
+
       // Dragging an existing selector level: update its price continuously
       if (selectorDragRef.current) {
         const rawPrice = chartPriceFromPointer(pointerY);
@@ -3423,6 +3629,19 @@ export default function ChartHorizontal({
 
       // Ignore clicks in the bottom bar area
       if (pointerY > boundingRect.height - BOTTOM_BAR_H) return;
+
+      // Bar selector mode: initiate bar range selection
+      if (barSelectorActive) {
+        const barIndex = calculateHoverIndex(pointerX);
+        if (barIndex != null) {
+          barSelectorDragRef.current = { anchorIndex: barIndex };
+          setBarSelectorRange({ startIndex: barIndex, endIndex: barIndex });
+          try {
+            target.setPointerCapture?.(event.pointerId ?? 0);
+          } catch {}
+        }
+        return;
+      }
 
       // Selector mode: capture level clicks instead of panning
       if (selectorActive) {
@@ -3501,6 +3720,7 @@ export default function ChartHorizontal({
     const handlePointerUp = () => {
       isDragging = false;
       selectorDragRef.current = null;
+      barSelectorDragRef.current = null; // Finalize bar selection
     };
 
     /**
@@ -3683,6 +3903,8 @@ export default function ChartHorizontal({
     selectorLevels.target,
     selectorLevels.stop,
     tickSize,
+    barSelectorActive,
+    barSelectorRange,
   ]);
 
   /**
@@ -3966,6 +4188,79 @@ export default function ChartHorizontal({
               Tick: {tickSize.toFixed(tickSize < 1 ? 2 : 0)}
             </button>
           )}
+          
+          {/* Bar Selector Controls for Replay Creation */}
+          {!replaySessionId && ( // Only show in live mode
+            <>
+              <button
+                type="button"
+                onClick={(e) => {
+                  e.stopPropagation();
+                  e.preventDefault();
+                  setBarSelectorActive((active) => !active);
+                  if (!barSelectorActive) {
+                    // Reset selection when activating
+                    setBarSelectorRange({ startIndex: null, endIndex: null });
+                  }
+                }}
+                className="ml-4 px-2.5 py-2 text-xs rounded border transition-colors cursor-pointer relative hover:opacity-80"
+                style={{
+                  backgroundColor:
+                    barSelectorActive ? colors.activeBg : colors.controlBg,
+                  borderColor:
+                    barSelectorActive ? colors.activeBorder : colors.controlBorder,
+                  color: barSelectorActive ? colors.activeText : colors.controlText,
+                }}
+                title="Select bars to create a replay session"
+              >
+                Select Replay
+              </button>
+              
+              {barSelectorActive && barSelectorInfo && (
+                <div
+                  className="px-2 py-2 text-xs rounded border"
+                  style={{
+                    backgroundColor: colors.chipBg,
+                    borderColor: colors.chipBorder,
+                    color: colors.controlText,
+                  }}
+                  title={`${barSelectorInfo.count} bars selected`}
+                >
+                  {barSelectorInfo.count} bars
+                </div>
+              )}
+              
+              <button
+                type="button"
+                disabled={!barSelectorValid}
+                onClick={(e) => {
+                  e.stopPropagation();
+                  e.preventDefault();
+                  if (barSelectorInfo) {
+                    // Navigate to replay page with timestamps
+                    const startTs = barSelectorInfo.startTs;
+                    const endTs = barSelectorInfo.endTs;
+                    // Format timestamps for URL or state
+                    navigate(`/replay?start=${startTs}&end=${endTs}&instrument=${selectedInstrumentId}`);
+                  }
+                }}
+                className="px-2.5 py-2 text-xs rounded border transition-colors cursor-pointer relative hover:opacity-80 disabled:opacity-50 disabled:cursor-not-allowed"
+                style={{
+                  backgroundColor: barSelectorValid
+                    ? colors.buttonPrimaryBg
+                    : colors.controlBg,
+                  borderColor: barSelectorValid
+                    ? colors.buttonPrimaryBorder
+                    : colors.controlBorder,
+                  color: barSelectorValid ? colors.priceChipText : colors.controlText,
+                }}
+                title="Create replay session from selected bars"
+              >
+                Enter Replay
+              </button>
+            </>
+          )}
+          
           <button
             type="button"
             onClick={(e) => {

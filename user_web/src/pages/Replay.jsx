@@ -1,4 +1,5 @@
 import { useEffect, useState } from "react";
+import { useSearchParams } from "react-router-dom";
 import Navigate from "@components/Navigate.jsx";
 import { useReplayApi } from "@components/Chart/__ReplayAPI.js";
 import ChartHorizontal from "@components/Chart/Horizontal.jsx";
@@ -7,7 +8,8 @@ import { useChartApi } from "@components/Chart/__API.js";
 const Replay = () => {
   const { startSession, listSessions, controlSession, deleteSession } =
     useReplayApi();
-  const { filterInstrument } = useChartApi();
+  const { filterInstrument, getInstrumentDetail } = useChartApi();
+  const [searchParams, setSearchParams] = useSearchParams();
 
   const [sessions, setSessions] = useState([]);
   const [selectedSessionId, setSelectedSessionId] = useState("");
@@ -23,7 +25,7 @@ const Replay = () => {
   const [restartCountBySession, setRestartCountBySession] = useState({});
   const [form, setForm] = useState({
     instrument_id: "",
-    speed: "1",
+    speed: "4",
     replay_date: "",
     start_time: "09:15",
     end_time: "15:30",
@@ -50,14 +52,11 @@ const Replay = () => {
         return bSafe - aSafe;
       });
       setSessions(sortedData);
-      if (sortedData.length > 0 && !selectedSessionId) {
-        setSelectedSessionId(sortedData[0].session_id);
-      }
       if (
         selectedSessionId &&
         !sortedData.find((s) => s.session_id === selectedSessionId)
       ) {
-        setSelectedSessionId(sortedData[0]?.session_id || "");
+        setSelectedSessionId("");
       }
     } catch (e) {
       setError(e?.message || "Failed to load replay sessions");
@@ -124,6 +123,62 @@ const Replay = () => {
   useEffect(() => {
     loadInstruments();
   }, []);
+
+  // Pre-fill form from URL parameters (from chart bar selection)
+  useEffect(() => {
+    const startParam = searchParams.get('start');
+    const endParam = searchParams.get('end');
+    const instrumentParam = searchParams.get('instrument');
+
+    if (startParam && endParam) {
+      // Parse timestamps to date and time
+      const startTs = Number(startParam);
+      const endTs = Number(endParam);
+
+      if (Number.isFinite(startTs) && Number.isFinite(endTs)) {
+        const startDate = new Date(startTs);
+        const endDate = new Date(endTs);
+
+        // Format date as YYYY-MM-DD
+        const dateStr = startDate.toISOString().slice(0, 10);
+
+        // Format times as HH:MM
+        const startTimeStr = startDate.toTimeString().slice(0, 5);
+        const endTimeStr = endDate.toTimeString().slice(0, 5);
+
+        // Update form
+        setForm((prev) => ({
+          ...prev,
+          replay_date: dateStr,
+          start_time: startTimeStr,
+          end_time: endTimeStr,
+          instrument_id: instrumentParam || prev.instrument_id,
+        }));
+
+        // Load and select instrument if provided
+        if (instrumentParam) {
+          const instrumentId = Number(instrumentParam);
+          if (Number.isFinite(instrumentId)) {
+            getInstrumentDetail(instrumentId)
+              .then((instrument) => {
+                if (instrument) {
+                  setSelectedInstrument(instrument);
+                  setInstrumentSearch(
+                    instrument.trading_symbol || instrument.description || ""
+                  );
+                }
+              })
+              .catch((err) => {
+                console.error("Failed to load instrument:", err);
+              });
+          }
+        }
+
+        // Clear URL params after reading to clean up URL
+        setSearchParams({});
+      }
+    }
+  }, [searchParams, setSearchParams, getInstrumentDetail]);
 
   const handleInstrumentSelect = (instrument) => {
     setSelectedInstrument(instrument);
@@ -282,7 +337,7 @@ const Replay = () => {
     <div className="flex flex-col h-screen p-1 gap-1 dark:bg-gray-500">
       <Navigate className="basis-12 border-solid border-black rounded-lg" />
 
-      <div className="grow flex gap-3 overflow-hidden">
+      <div className="grow flex gap-1 overflow-hidden">
         <div className="w-[360px] shrink-0 rounded-lg border border-gray-300 bg-white/70 dark:bg-gray-700 dark:border-gray-600 p-4 overflow-auto">
           <div className="text-xl font-semibold text-gray-900 dark:text-gray-100">
             Replay
@@ -645,8 +700,9 @@ const Replay = () => {
           ) : (
             <div className="h-full flex items-center justify-center p-4">
               <div className="text-center text-xl font-medium text-gray-700 dark:text-gray-300 max-w-md">
-                Select a replay session with a valid instrument to open chart
-                streaming.
+                <span className="block">Fill the replay session with a valid instrument</span>
+                <span className="block">Or Select an already created session</span>
+                <span className="block">to open chart streaming.</span>
               </div>
             </div>
           )}
