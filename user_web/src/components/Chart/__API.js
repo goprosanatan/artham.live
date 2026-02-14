@@ -1,5 +1,8 @@
 import { requestApi } from "@hooks/requestApi.js";
 
+const instrumentDetailCache = new Map();
+const instrumentDetailInflight = new Map();
+
 export function useChartApi() {
   const { request } = requestApi(); // token-aware axios helper
 
@@ -35,10 +38,32 @@ export function useChartApi() {
       return typeof data === "string" ? JSON.parse(data) : data;
     },
     getInstrumentDetail: async (instrument_id) => {
-      const data = await request("chart/instrument/detail", "GET", {
+      if (instrument_id == null) return null;
+      const cacheKey = String(instrument_id);
+      if (instrumentDetailCache.has(cacheKey)) {
+        return instrumentDetailCache.get(cacheKey);
+      }
+
+      if (instrumentDetailInflight.has(cacheKey)) {
+        return instrumentDetailInflight.get(cacheKey);
+      }
+
+      const fetchPromise = request("chart/instrument/detail", "GET", {
         instrument_id,
-      });
-      return typeof data === "string" ? JSON.parse(data) : data;
+      })
+        .then((data) => (typeof data === "string" ? JSON.parse(data) : data))
+        .then((detail) => {
+          if (detail && typeof detail === "object") {
+            instrumentDetailCache.set(cacheKey, detail);
+          }
+          return detail;
+        })
+        .finally(() => {
+          instrumentDetailInflight.delete(cacheKey);
+        });
+
+      instrumentDetailInflight.set(cacheKey, fetchPromise);
+      return fetchPromise;
     },
     getData: async ({
       instrument_id,

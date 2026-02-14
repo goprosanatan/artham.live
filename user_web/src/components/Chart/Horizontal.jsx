@@ -74,6 +74,10 @@ const LEFT = 8; // Left padding inside chart area (pixels)
 const RIGHT = 8; // Right padding inside chart area (pixels)
 const SHOW_BODY_THRESHOLD = 3; // Minimum body width in pixels to render bar bodies
 
+// Cache instrument details across chart mounts to avoid repeated calls.
+const instrumentDetailCache = new Map();
+const instrumentDetailInflight = new Map();
+
 // Zoom-dependent inter-bar gap computation (in pixels)
 const computeGap = (w) => {
   if (w >= 72) return 8; // Very zoomed in
@@ -344,9 +348,26 @@ export default function ChartHorizontal({
     try {
       // Fetch instrument metadata (trading symbol, segment, exchange, etc.) for display
       // Use .catch(() => null) to prevent throwing on fetch failure
-      const instrumentDetail = await getInstrumentDetail(instrumentId).catch(
-        () => null
-      );
+      const cacheKey = String(instrumentId);
+      let instrumentDetail = instrumentDetailCache.get(cacheKey);
+
+      if (!instrumentDetail) {
+        const inflight = instrumentDetailInflight.get(cacheKey);
+
+        if (inflight) {
+          instrumentDetail = await inflight;
+        } else {
+          const fetchPromise = getInstrumentDetail(instrumentId).catch(
+            () => null
+          );
+          instrumentDetailInflight.set(cacheKey, fetchPromise);
+          instrumentDetail = await fetchPromise;
+          instrumentDetailInflight.delete(cacheKey);
+          if (instrumentDetail && typeof instrumentDetail === "object") {
+            instrumentDetailCache.set(cacheKey, instrumentDetail);
+          }
+        }
+      }
 
       // Validate and store instrument detail if successfully fetched
       if (instrumentDetail && typeof instrumentDetail === "object") {
