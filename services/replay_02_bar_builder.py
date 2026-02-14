@@ -143,23 +143,14 @@ def parse_price(tick_payload: dict):
 
 
 def parse_volume(tick_payload: dict):
-    candidates = [
-        tick_payload.get("last_traded_qty"),
-        tick_payload.get("last_traded_quantity"),
-        tick_payload.get("volume_traded"),
-        tick_payload.get("volume"),
-        tick_payload.get("qty"),
-    ]
-    for value in candidates:
-        try:
-            if value is None:
-                continue
-            parsed = int(float(value))
-            if parsed >= 0:
-                return parsed
-        except Exception:
-            continue
-    return 0
+    value = tick_payload.get("volume_traded")
+    if value is None:
+        return 0
+    try:
+        parsed = int(float(value))
+        return parsed if parsed >= 0 else 0
+    except Exception:
+        return 0
 
 
 def parse_oi(tick_payload: dict):
@@ -258,7 +249,7 @@ def _upsert_bar(existing_bar: dict, price: float, volume: int, oi: int):
     existing_bar["high"] = max(existing_bar["high"], price)
     existing_bar["low"] = min(existing_bar["low"], price)
     existing_bar["close"] = price
-    existing_bar["volume"] += volume
+    existing_bar["volume"] = volume
     existing_bar["oi"] = oi
     existing_bar["oi_change"] = oi - existing_bar.get("oi_start", oi)
     return existing_bar

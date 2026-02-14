@@ -42,15 +42,22 @@ const Replay = () => {
     setError("");
     try {
       const data = await listSessions();
-      setSessions(data);
-      if (data.length > 0 && !selectedSessionId) {
-        setSelectedSessionId(data[0].session_id);
+      const sortedData = [...data].sort((a, b) => {
+        const aTs = Date.parse(a?.created_at || a?.updated_at || 0);
+        const bTs = Date.parse(b?.created_at || b?.updated_at || 0);
+        const aSafe = Number.isNaN(aTs) ? 0 : aTs;
+        const bSafe = Number.isNaN(bTs) ? 0 : bTs;
+        return bSafe - aSafe;
+      });
+      setSessions(sortedData);
+      if (sortedData.length > 0 && !selectedSessionId) {
+        setSelectedSessionId(sortedData[0].session_id);
       }
       if (
         selectedSessionId &&
-        !data.find((s) => s.session_id === selectedSessionId)
+        !sortedData.find((s) => s.session_id === selectedSessionId)
       ) {
-        setSelectedSessionId(data[0]?.session_id || "");
+        setSelectedSessionId(sortedData[0]?.session_id || "");
       }
     } catch (e) {
       setError(e?.message || "Failed to load replay sessions");

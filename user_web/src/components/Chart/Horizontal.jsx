@@ -1673,8 +1673,13 @@ export default function ChartHorizontal({
         const volumeRatio = Math.min(1, bar.volume / maxVol);
         const volumeHeight = Math.max(1, volDrawH * volumeRatio);
 
-        const volumeGap = 1; // 1px gap between adjacent bars
-        const volumeWidth = Math.max(1, colStride - volumeGap);
+        // Keep at least a 1-device-pixel gap to avoid rounding collapse at high DPR.
+        const volumeGap = 1 / dpr;
+        const volumeWidth = Math.max(1 / dpr, colStride - volumeGap);
+        const snappedVolumeWidth = Math.max(
+          1 / dpr,
+          Math.floor(volumeWidth * dpr) / dpr
+        );
 
         // Position volume bars in the dedicated volume area at bottom
         const volumeBaseY = chartAreaH;
@@ -1682,11 +1687,15 @@ export default function ChartHorizontal({
         const volumeCenterY =
           volumeBaseY + (volDrawH - volumeHeight) + volumeHeight / 2;
 
+        // Use natural colStride spacing (unsnapped) for uniform gaps
+        const volumeLeftX = LEFT + visibleRange.xOff + columnIndex * colStride;
+        const volumeCenterX = volumeLeftX + snappedVolumeWidth / 2;
+        
         // Populate Volume Instance Buffers
-        volCenters[volumeInstanceIndex * 2] = barCenterX;
+        volCenters[volumeInstanceIndex * 2] = volumeCenterX;
         volCenters[volumeInstanceIndex * 2 + 1] = volumeCenterY;
 
-        volHalf[volumeInstanceIndex * 2] = volumeWidth / 2;
+        volHalf[volumeInstanceIndex * 2] = snappedVolumeWidth / 2;
         volHalf[volumeInstanceIndex * 2 + 1] = volumeHeight / 2;
 
         // Use same color as bar body but with reduced opacity
