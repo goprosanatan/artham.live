@@ -2612,19 +2612,12 @@ export default function ChartHorizontal({
           if (startBar && endBar) {
             const startDate = new Date(startBar.date);
             const endDate = new Date(endBar.date);
-            
-            if (timeframe === "1D" || !is_intraday) {
-              // For daily, show date only
-              dateRangeText = `${startDate.toLocaleDateString()} - ${endDate.toLocaleDateString()}`;
-            } else {
-              // For intraday, show date and time
-              const formatDateTime = (d) => {
-                const date = d.toLocaleDateString();
-                const time = d.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
-                return `${date} ${time}`;
-              };
-              dateRangeText = `${formatDateTime(startDate)} - ${formatDateTime(endDate)}`;
-            }
+            const formatTime = (d) =>
+              d.toLocaleTimeString([], {
+                hour: "2-digit",
+                minute: "2-digit",
+              });
+            dateRangeText = `${formatTime(startDate)} - ${formatTime(endDate)}`;
           }
           
           const infoText = `${barSelectorInfo.count} bars selected`;
@@ -4375,7 +4368,34 @@ export default function ChartHorizontal({
               </button>
             </>
           )}
-          
+          {!replaySessionId && (
+            <button
+              type="button"
+              onClick={(e) => {
+                e.stopPropagation();
+                e.preventDefault();
+                setBarSelectorActive(false);
+                setBarSelectorRange({ startIndex: null, endIndex: null });
+                setBarSelectorDayWarning("");
+                barSelectorDragRef.current = null;
+                setTradeSelectorActive(false);
+                setTradeSelectorLevels({ entry: null, target: null, stop: null });
+                setSelectorStep("entry");
+                setSelectorError("");
+                selectorDragRef.current = null;
+                if (onClearOrder) onClearOrder();
+              }}
+              className="ml-4 px-2.5 py-2 text-xs rounded border transition-colors cursor-pointer relative hover:opacity-80"
+              style={{
+                backgroundColor: colors.controlBg,
+                borderColor: colors.controlBorder,
+                color: colors.controlText,
+              }}
+              title="Clear replay and trade selectors"
+            >
+              Clear
+            </button>
+          )}
           {!replaySessionId && (
             <>
               <button
@@ -4440,27 +4460,6 @@ export default function ChartHorizontal({
                 title="Enter trade when all levels are set"
               >
                 {submittingOrder ? "Submitting..." : "Enter Trade"}
-              </button>
-              <button
-                type="button"
-                onClick={(e) => {
-                  e.stopPropagation();
-                  e.preventDefault();
-                  setTradeSelectorActive(false);
-                  setTradeSelectorLevels({ entry: null, target: null, stop: null });
-                  setSelectorStep("entry");
-                  setSelectorError("");
-                  if (onClearOrder) onClearOrder();
-                }}
-                className="mr-4 px-2.5 py-2 text-xs rounded border transition-colors cursor-pointer relative hover:opacity-80"
-                style={{
-                  backgroundColor: colors.controlBg,
-                  borderColor: colors.controlBorder,
-                  color: colors.controlText,
-                }}
-                title="Clear selector and re-enable crosshair"
-              >
-                Clear
               </button>
             </>
           )}
