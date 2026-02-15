@@ -47,6 +47,16 @@ scrape_configs:
       - targets: ['artham_order_05_execution_engine:9209']
         labels:
           service: 'execution_engine'
+  - job_name: 'feature_equity'
+    static_configs:
+      - targets: ['artham_feature_01_equity:9212']
+        labels:
+          service: 'feature_equity'
+  - job_name: 'feature_option'
+    static_configs:
+      - targets: ['artham_feature_02_option:9213']
+        labels:
+          service: 'feature_option'
   - job_name: 'prometheus'
     static_configs:
       - targets: ['artham_00_prometheus:9090']

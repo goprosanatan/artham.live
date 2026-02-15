@@ -1,0 +1,117 @@
+{
+  "title": "Features - Equity + Option",
+  "uid": "features-overview",
+  "timezone": "browser",
+  "schemaVersion": 39,
+  "version": 1,
+  "refresh": "5s",
+  "tags": ["feature", "overview", "prometheus"],
+  "editable": true,
+  "panels": [
+    {
+      "type": "stat",
+      "title": "Equity Redis Connected",
+      "gridPos": {"h": 6, "w": 6, "x": 0, "y": 0},
+      "datasource": "Prometheus",
+      "id": 1,
+      "targets": [{"expr": "feature_equity_redis_connected", "refId": "A", "legendFormat": "Equity"}],
+      "fieldConfig": {
+        "defaults": {
+          "color": {"mode": "thresholds"},
+          "thresholds": {"mode": "absolute", "steps": [{"color": "red", "value": null}, {"color": "green", "value": 1}]}
+        }
+      }
+    },
+    {
+      "type": "stat",
+      "title": "Option Redis Connected",
+      "gridPos": {"h": 6, "w": 6, "x": 6, "y": 0},
+      "datasource": "Prometheus",
+      "id": 2,
+      "targets": [{"expr": "optionengine_redis_connected", "refId": "A", "legendFormat": "Option"}],
+      "fieldConfig": {
+        "defaults": {
+          "color": {"mode": "thresholds"},
+          "thresholds": {"mode": "absolute", "steps": [{"color": "red", "value": null}, {"color": "green", "value": 1}]}
+        }
+      }
+    },
+    {
+      "type": "stat",
+      "title": "Equity Errors (5m)",
+      "gridPos": {"h": 6, "w": 6, "x": 12, "y": 0},
+      "datasource": "Prometheus",
+      "id": 3,
+      "targets": [{"expr": "increase(feature_equity_errors_total[5m])", "refId": "A", "legendFormat": "Errors"}]
+    },
+    {
+      "type": "stat",
+      "title": "Option Errors (5m)",
+      "gridPos": {"h": 6, "w": 6, "x": 18, "y": 0},
+      "datasource": "Prometheus",
+      "id": 4,
+      "targets": [{"expr": "increase(optionengine_errors_total[5m])", "refId": "A", "legendFormat": "Errors"}]
+    },
+    {
+      "type": "timeseries",
+      "title": "Equity Ticks Read/sec",
+      "gridPos": {"h": 8, "w": 12, "x": 0, "y": 6},
+      "datasource": "Prometheus",
+      "id": 5,
+      "targets": [{"expr": "rate(feature_equity_read_total[1m])", "refId": "A", "legendFormat": "Equity Read/sec"}]
+    },
+    {
+      "type": "timeseries",
+      "title": "Option Ticks Read/sec",
+      "gridPos": {"h": 8, "w": 12, "x": 12, "y": 6},
+      "datasource": "Prometheus",
+      "id": 6,
+      "targets": [{"expr": "rate(optionengine_read_total[1m])", "refId": "A", "legendFormat": "Option Read/sec"}]
+    },
+    {
+      "type": "timeseries",
+      "title": "Equity Published/sec",
+      "gridPos": {"h": 8, "w": 12, "x": 0, "y": 14},
+      "datasource": "Prometheus",
+      "id": 7,
+      "targets": [{"expr": "rate(feature_equity_publish_total[1m])", "refId": "A", "legendFormat": "Equity Published/sec"}]
+    },
+    {
+      "type": "timeseries",
+      "title": "Option Published/sec",
+      "gridPos": {"h": 8, "w": 12, "x": 12, "y": 14},
+      "datasource": "Prometheus",
+      "id": 8,
+      "targets": [{"expr": "rate(optionengine_publish_total[1m])", "refId": "A", "legendFormat": "Option Published/sec"}]
+    },
+    {
+      "type": "timeseries",
+      "title": "Equity Latency p95 (seconds)",
+      "gridPos": {"h": 8, "w": 12, "x": 0, "y": 22},
+      "datasource": "Prometheus",
+      "id": 9,
+      "targets": [
+        {
+          "expr": "histogram_quantile(0.95, sum(rate(feature_equity_process_duration_seconds_bucket[5m])) by (le))",
+          "refId": "A",
+          "legendFormat": "Equity p95"
+        }
+      ]
+    },
+    {
+      "type": "timeseries",
+      "title": "Option Latency p95 (seconds)",
+      "gridPos": {"h": 8, "w": 12, "x": 12, "y": 22},
+      "datasource": "Prometheus",
+      "id": 10,
+      "targets": [
+        {
+          "expr": "histogram_quantile(0.95, sum(rate(optionengine_process_duration_seconds_bucket[5m])) by (le))",
+          "refId": "A",
+          "legendFormat": "Option p95"
+        }
+      ]
+    }
+  ],
+  "time": {"from": "now-1h", "to": "now"}
+}
