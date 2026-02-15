@@ -276,7 +276,7 @@ services:
       POSTGRES_PORT: 5432
       POSTGRES_DB: artham
     ports:
-      - "9211:9211"
+      - "9210:9210"
     volumes:
       - logs_data:/logs
     restart: unless-stopped
@@ -306,7 +306,7 @@ services:
       POSTGRES_PORT: 5432
       POSTGRES_DB: artham
     ports:
-      - "9212:9212"
+      - "9211:9211"
     volumes:
       - logs_data:/logs
     restart: unless-stopped

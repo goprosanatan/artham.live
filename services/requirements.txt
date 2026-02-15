@@ -7,3 +7,4 @@ python-decouple==3.8
 flatten-json==0.1.14
 psycopg[binary]==3.2.1
 pydantic==2.6.0
+scipy==1.17.0
