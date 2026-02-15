@@ -35,14 +35,11 @@ REDIS_CONN = Redis(
     decode_responses=True,
 )
 
-REPLAY_STREAM_PREFIX = str(config("REPLAY_STREAM_PREFIX", cast=str, default="replay"))
-REPLAY_CONTROL_STREAM = str(
-    config("REPLAY_CONTROL_STREAM", cast=str, default="replay:control")
+REPLAY_STREAM_PREFIX = str(config("REPLAY_STREAM_PREFIX", cast=str))
+REPLAY_CONTROL_STREAM = str(config("REPLAY_CONTROL_STREAM", cast=str))
+REPLAY_BAR_BUILDER_METRICS_PORT = int(
+    config("REPLAY_BAR_BUILDER_METRICS_PORT", cast=int)
 )
-REPLAY_BAR_BUILDER_METRICS_PORT = int(config(
-    "REPLAY_BAR_BUILDER_METRICS_PORT", cast=int, default=9212
-))
-
 
 REPLAY_BAR_TICKS_READ_TOTAL = Counter(
     "replay_bar_ticks_read_total", "Total replay ticks consumed"
@@ -404,7 +401,9 @@ async def _session_loop(session: ReplayBarBuilderSession):
             raise
         except Exception as e:
             REPLAY_BAR_ERRORS_TOTAL.inc()
-            logger.exception(f"[REPLAY BAR] session loop error for {session.session_id}: {e}")
+            logger.exception(
+                f"[REPLAY BAR] session loop error for {session.session_id}: {e}"
+            )
             await asyncio.sleep(1)
 
     logger.info(f"[REPLAY BAR] session loop stopped: {session.session_id}")
@@ -455,11 +454,11 @@ async def _stop_session(session_id: str):
 async def _restart_session(session_id: str):
     """Restart a session: clear all internal state and reset to read from beginning"""
     logger.info(f"[REPLAY BAR] restarting session {session_id} - clearing all state")
-    
+
     session = SESSIONS.get(session_id)
     if not session:
         return
-    
+
     # Clear all aggregation state
     session.minute_bars.clear()
     session.daily_bars.clear()
@@ -467,14 +466,16 @@ async def _restart_session(session_id: str):
     session.current_day_key.clear()
     session.minute_start_volume.clear()
     session.day_start_volume.clear()
-    
+
     # Reset stream reading position to beginning
     session.last_tick_id = "$"
-    
+
     # Resume if paused
     session.run_event.set()
-    
-    logger.info(f"[REPLAY BAR] session {session_id} state cleared, ready for fresh replay")
+
+    logger.info(
+        f"[REPLAY BAR] session {session_id} state cleared, ready for fresh replay"
+    )
 
 
 async def _bootstrap_existing_sessions():

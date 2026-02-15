@@ -39,6 +39,8 @@ const Replay = () => {
     return composed.getTime();
   };
 
+  const addOneMinute = (ts) => (ts == null ? null : ts + 60 * 1000);
+
   const refreshSessions = async () => {
     setLoading(true);
     setError("");
@@ -195,7 +197,9 @@ const Replay = () => {
     setError("");
     try {
       const startTs = toTimestampMs(form.replay_date, form.start_time);
-      const endTs = toTimestampMs(form.replay_date, form.end_time);
+      const endTs = addOneMinute(
+        toTimestampMs(form.replay_date, form.end_time),
+      );
 
       if (!form.replay_date) {
         setError("Please select a replay date");
