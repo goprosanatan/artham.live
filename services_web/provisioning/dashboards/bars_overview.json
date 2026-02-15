@@ -1,0 +1,119 @@
+{
+  "title": "Bars - Overview",
+  "uid": "bars-overview",
+  "timezone": "browser",
+  "schemaVersion": 39,
+  "version": 1,
+  "refresh": "5s",
+  "tags": ["bars", "overview", "prometheus"],
+  "editable": true,
+  "panels": [
+    {
+      "type": "stat",
+      "title": "Bar Builder Redis Connected",
+      "gridPos": {"h": 6, "w": 6, "x": 0, "y": 0},
+      "datasource": "Prometheus",
+      "id": 1,
+      "targets": [{"expr": "barbuilder_redis_connected", "refId": "A", "legendFormat": "Builder"}],
+      "fieldConfig": {
+        "defaults": {
+          "color": {"mode": "thresholds"},
+          "thresholds": {"mode": "absolute", "steps": [{"color": "red", "value": null}, {"color": "green", "value": 1}]}
+        }
+      }
+    },
+    {
+      "type": "stat",
+      "title": "Bar Store Redis Connected",
+      "gridPos": {"h": 6, "w": 6, "x": 6, "y": 0},
+      "datasource": "Prometheus",
+      "id": 2,
+      "targets": [{"expr": "barstore_redis_connected", "refId": "A", "legendFormat": "Store"}],
+      "fieldConfig": {
+        "defaults": {
+          "color": {"mode": "thresholds"},
+          "thresholds": {"mode": "absolute", "steps": [{"color": "red", "value": null}, {"color": "green", "value": 1}]}
+        }
+      }
+    },
+    {
+      "type": "stat",
+      "title": "Bar Builder Errors (5m)",
+      "gridPos": {"h": 6, "w": 6, "x": 12, "y": 0},
+      "datasource": "Prometheus",
+      "id": 3,
+      "targets": [{"expr": "increase(barbuilder_errors_total[5m])", "refId": "A", "legendFormat": "Errors"}]
+    },
+    {
+      "type": "stat",
+      "title": "Bar Store Errors (5m)",
+      "gridPos": {"h": 6, "w": 6, "x": 18, "y": 0},
+      "datasource": "Prometheus",
+      "id": 4,
+      "targets": [{"expr": "increase(barstore_errors_total[5m])", "refId": "A", "legendFormat": "Errors"}]
+    },
+    {
+      "type": "timeseries",
+      "title": "Builder Ticks Read/sec",
+      "gridPos": {"h": 8, "w": 12, "x": 0, "y": 6},
+      "datasource": "Prometheus",
+      "id": 5,
+      "targets": [{"expr": "rate(barbuilder_read_total[1m])", "refId": "A", "legendFormat": "Read/sec"}]
+    },
+    {
+      "type": "timeseries",
+      "title": "Store Bars Read/sec",
+      "gridPos": {"h": 8, "w": 12, "x": 12, "y": 6},
+      "datasource": "Prometheus",
+      "id": 6,
+      "targets": [{"expr": "rate(barstore_read_total[1m])", "refId": "A", "legendFormat": "Read/sec"}]
+    },
+    {
+      "type": "timeseries",
+      "title": "Builder Bars Published/sec (1m + 1D)",
+      "gridPos": {"h": 8, "w": 12, "x": 0, "y": 14},
+      "datasource": "Prometheus",
+      "id": 7,
+      "targets": [
+        {"expr": "rate(barbuilder_bar_1m_live_total[1m]) + rate(barbuilder_bar_1m_final_total[1m]) + rate(barbuilder_bar_1d_live_total[1m]) + rate(barbuilder_bar_1d_final_total[1m])", "refId": "A", "legendFormat": "Published/sec"}
+      ]
+    },
+    {
+      "type": "timeseries",
+      "title": "Store Buffer Size",
+      "gridPos": {"h": 8, "w": 12, "x": 12, "y": 14},
+      "datasource": "Prometheus",
+      "id": 8,
+      "targets": [{"expr": "barstore_buffer_size", "refId": "A", "legendFormat": "Buffer"}]
+    },
+    {
+      "type": "timeseries",
+      "title": "Builder Latency p95 (seconds)",
+      "gridPos": {"h": 8, "w": 12, "x": 0, "y": 22},
+      "datasource": "Prometheus",
+      "id": 9,
+      "targets": [
+        {
+          "expr": "histogram_quantile(0.95, sum(rate(barbuilder_process_duration_seconds_bucket[5m])) by (le))",
+          "refId": "A",
+          "legendFormat": "Builder p95"
+        }
+      ]
+    },
+    {
+      "type": "timeseries",
+      "title": "Store Batch Latency p95 (seconds)",
+      "gridPos": {"h": 8, "w": 12, "x": 12, "y": 22},
+      "datasource": "Prometheus",
+      "id": 10,
+      "targets": [
+        {
+          "expr": "histogram_quantile(0.95, sum(rate(barstore_batch_duration_seconds_bucket[5m])) by (le))",
+          "refId": "A",
+          "legendFormat": "Store p95"
+        }
+      ]
+    }
+  ],
+  "time": {"from": "now-1h", "to": "now"}
+}

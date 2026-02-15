@@ -1,0 +1,117 @@
+{
+  "title": "Ticks - Overview",
+  "uid": "ticks-overview",
+  "timezone": "browser",
+  "schemaVersion": 39,
+  "version": 1,
+  "refresh": "5s",
+  "tags": ["ticks", "overview", "prometheus"],
+  "editable": true,
+  "panels": [
+    {
+      "type": "stat",
+      "title": "Ingestor Connected",
+      "gridPos": {"h": 6, "w": 6, "x": 0, "y": 0},
+      "datasource": "Prometheus",
+      "id": 1,
+      "targets": [{"expr": "ingestor_connected", "refId": "A", "legendFormat": "Ingestor"}],
+      "fieldConfig": {
+        "defaults": {
+          "color": {"mode": "thresholds"},
+          "thresholds": {"mode": "absolute", "steps": [{"color": "red", "value": null}, {"color": "green", "value": 1}]}
+        }
+      }
+    },
+    {
+      "type": "stat",
+      "title": "Tick Store Redis Connected",
+      "gridPos": {"h": 6, "w": 6, "x": 6, "y": 0},
+      "datasource": "Prometheus",
+      "id": 2,
+      "targets": [{"expr": "tickstore_redis_connected", "refId": "A", "legendFormat": "Store"}],
+      "fieldConfig": {
+        "defaults": {
+          "color": {"mode": "thresholds"},
+          "thresholds": {"mode": "absolute", "steps": [{"color": "red", "value": null}, {"color": "green", "value": 1}]}
+        }
+      }
+    },
+    {
+      "type": "stat",
+      "title": "Ingestor Errors (5m)",
+      "gridPos": {"h": 6, "w": 6, "x": 12, "y": 0},
+      "datasource": "Prometheus",
+      "id": 3,
+      "targets": [{"expr": "increase(ingestor_errors_total[5m])", "refId": "A", "legendFormat": "Errors"}]
+    },
+    {
+      "type": "stat",
+      "title": "Tick Store Errors (5m)",
+      "gridPos": {"h": 6, "w": 6, "x": 18, "y": 0},
+      "datasource": "Prometheus",
+      "id": 4,
+      "targets": [{"expr": "increase(tickstore_errors_total[5m])", "refId": "A", "legendFormat": "Errors"}]
+    },
+    {
+      "type": "timeseries",
+      "title": "Ticks Received/sec",
+      "gridPos": {"h": 8, "w": 12, "x": 0, "y": 6},
+      "datasource": "Prometheus",
+      "id": 5,
+      "targets": [{"expr": "rate(ingestor_ticks_total[1m])", "refId": "A", "legendFormat": "Received/sec"}]
+    },
+    {
+      "type": "timeseries",
+      "title": "Ticks Stored/sec",
+      "gridPos": {"h": 8, "w": 12, "x": 12, "y": 6},
+      "datasource": "Prometheus",
+      "id": 6,
+      "targets": [{"expr": "rate(tickstore_read_total[1m])", "refId": "A", "legendFormat": "Read/sec"}]
+    },
+    {
+      "type": "timeseries",
+      "title": "Ticks Published/sec",
+      "gridPos": {"h": 8, "w": 12, "x": 0, "y": 14},
+      "datasource": "Prometheus",
+      "id": 7,
+      "targets": [{"expr": "rate(ingestor_publish_total[1m])", "refId": "A", "legendFormat": "Published/sec"}]
+    },
+    {
+      "type": "timeseries",
+      "title": "Store Buffer Size",
+      "gridPos": {"h": 8, "w": 12, "x": 12, "y": 14},
+      "datasource": "Prometheus",
+      "id": 8,
+      "targets": [{"expr": "tickstore_buffer_size", "refId": "A", "legendFormat": "Buffer"}]
+    },
+    {
+      "type": "timeseries",
+      "title": "Ingestor Latency p95 (seconds)",
+      "gridPos": {"h": 8, "w": 12, "x": 0, "y": 22},
+      "datasource": "Prometheus",
+      "id": 9,
+      "targets": [
+        {
+          "expr": "histogram_quantile(0.95, sum(rate(ingestor_latency_seconds_bucket[5m])) by (le))",
+          "refId": "A",
+          "legendFormat": "Ingestor p95"
+        }
+      ]
+    },
+    {
+      "type": "timeseries",
+      "title": "Store Batch Latency p95 (seconds)",
+      "gridPos": {"h": 8, "w": 12, "x": 12, "y": 22},
+      "datasource": "Prometheus",
+      "id": 10,
+      "targets": [
+        {
+          "expr": "histogram_quantile(0.95, sum(rate(tickstore_batch_duration_seconds_bucket[5m])) by (le))",
+          "refId": "A",
+          "legendFormat": "Store p95"
+        }
+      ]
+    }
+  ],
+  "time": {"from": "now-1h", "to": "now"}
+}
