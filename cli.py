@@ -162,7 +162,7 @@ deleter.delete_by_instrument_timeframe(
 )
 
 deleter.delete_after_timestamp(
-    dt=datetime(2026, 2, 9, 00, 00, tzinfo=ZoneInfo("Asia/Kolkata")),
+    dt=datetime(2026, 2, 15, 00, 00, tzinfo=ZoneInfo("Asia/Kolkata")),
 )
 
 
