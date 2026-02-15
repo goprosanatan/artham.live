@@ -67,6 +67,7 @@ class ViewportEngine {
 // Static layout and rendering constants
 const TIME_SCALE_H = 28; // Height of time axis at bottom (pixels)
 const PRICE_SCALE_W = 70; // Width of price axis at right (pixels)
+const DEPTH_PANEL_W = 160; // Width of depth ladder panel (pixels)
 const BOTTOM_BAR_H = 60; // Height of control bar with timeframe buttons and search
 const TOP = 0; // Top padding inside chart area (pixels)
 const BOTTOM = 8; // Bottom padding inside chart area (pixels)
@@ -155,6 +156,38 @@ const snapToTickSize = (price, tickSize) => {
   return ticks * tickSize;
 };
 
+const normalizeDepthLevels = (levels, side) => {
+  let list = [];
+  if (!levels) return list;
+  if (Array.isArray(levels)) {
+    list = levels;
+  } else if (typeof levels === "string") {
+    try {
+      const parsed = JSON.parse(levels);
+      list = Array.isArray(parsed) ? parsed : Object.values(parsed || {});
+    } catch {
+      list = [];
+    }
+  } else if (typeof levels === "object") {
+    list = Object.values(levels);
+  }
+
+  const normalized = list
+    .map((lvl) => ({
+      price: Number(lvl?.price),
+      quantity: Number(lvl?.quantity),
+      orders: Number(lvl?.orders),
+      ratio: Number(lvl?.ratio),
+    }))
+    .filter((lvl) => Number.isFinite(lvl.price) && Number.isFinite(lvl.quantity));
+
+  normalized.sort((a, b) =>
+    side === "buy" ? b.price - a.price : a.price - b.price
+  );
+
+  return normalized;
+};
+
 // Main horizontal chart component handling data loading, rendering, and UI controls.
 export default function ChartHorizontal({
   instrumentId = null,
@@ -207,6 +240,9 @@ export default function ChartHorizontal({
     target: { price: null, startIndex: null, endIndex: null },
     stop: { price: null, startIndex: null, endIndex: null },
   });
+
+  // Live depth ladder state (feature_equity)
+  const [depthSnapshot, setDepthSnapshot] = useState(null);
   
   // Bar selector state for replay creation
   const [barSelectorActive, setBarSelectorActive] = useState(false);
@@ -595,6 +631,10 @@ export default function ChartHorizontal({
     loadBarsForInstrument(numericId);
   }, [instrumentId, replaySessionId]);
 
+  useEffect(() => {
+    setDepthSnapshot(null);
+  }, [selectedInstrumentId]);
+
   // Websocket lifecycle: establish connection and handle real-time bar updates
   useEffect(() => {
     // Guard: skip websocket setup if no auth token available
@@ -736,6 +776,28 @@ export default function ChartHorizontal({
         });
       },
 
+      // Called when a feature equity depth snapshot is received
+      onDepth: (payload) => {
+        if (!payload || payload.type !== "feature.equity_depth") return;
+        if (replaySessionId) return; // Depth ladder is live-only
+
+        const data = payload.data || {};
+        if (
+          String(data.instrument_id || "") !==
+          String(selectedInstrumentIdRef.current || "")
+        )
+          return;
+
+        setDepthSnapshot({
+          instrument_id: data.instrument_id,
+          last_price: Number(data.last_price),
+          exchange_ts: data.exchange_ts || null,
+          ingest_ts: data.ingest_ts || null,
+          buy_levels: normalizeDepthLevels(data.buy_levels, "buy"),
+          sell_levels: normalizeDepthLevels(data.sell_levels, "sell"),
+        });
+      },
+
       // Called when websocket encounters an error (network, protocol, etc.)
       onError: (err) => {
         console.error("WS error", err?.message || err);
@@ -799,12 +861,16 @@ export default function ChartHorizontal({
     if (!ws.subscribe || !ws.unsubscribe) return;
     ws.subscribe([selectedInstrumentId], subType);
     console.log("WS subscribe", selectedInstrumentId, subType);
+    ws.subscribe([selectedInstrumentId], "feature.equity_depth");
+    console.log("WS subscribe", selectedInstrumentId, "feature.equity_depth");
 
     // Cleanup function: unsubscribe when instrument/timeframe changes or component unmounts
     // Prevents receiving bars for instruments/timeframes user is no longer viewing
     return () => {
       ws.unsubscribe([selectedInstrumentId], subType);
       console.log("WS unsubscribe", selectedInstrumentId, subType);
+      ws.unsubscribe([selectedInstrumentId], "feature.equity_depth");
+      console.log("WS unsubscribe", selectedInstrumentId, "feature.equity_depth");
     };
   }, [wsConnected, selectedInstrumentId, timeframe, replaySessionId]); // Re-run when connection state, instrument, timeframe, or replay session changes
 
@@ -883,7 +949,10 @@ export default function ChartHorizontal({
   const usableHeight = Math.max(40, measuredHeight - BOTTOM_BAR_H); // Space above control bar
   const chartAreaH = Math.max(40, usableHeight - TIME_SCALE_H - VOLUME_H); // Bars-only height
   const glHeight = chartAreaH + VOLUME_H; // Combined height for WebGL canvas (bars + volume)
-  const chartAreaW = Math.max(40, width - PRICE_SCALE_W); // Width excluding price scale
+  const chartAreaW = Math.max(
+    40,
+    width - PRICE_SCALE_W - DEPTH_PANEL_W
+  ); // Width excluding price scale + depth panel
 
   // Bar width in pixels (user-adjustable via settings, range: 1-100)
   const [barWidth, setBarWidthState] = useState(viewport.time.barWidth); // Default 12px width
@@ -4072,7 +4141,7 @@ export default function ChartHorizontal({
     <>
       <div
         className="absolute left-0 top-0"
-        style={{ width: chartAreaW - PRICE_SCALE_W, height: TIME_SCALE_H }}
+        style={{ width: chartAreaW, height: TIME_SCALE_H }}
       >
         <canvas ref={timeBaseRef} className="absolute inset-0" />
         <canvas
@@ -4081,8 +4150,9 @@ export default function ChartHorizontal({
         />
       </div>
       <div
-        className="absolute right-0 top-0 flex items-center justify-center"
+        className="absolute top-0 flex items-center justify-center"
         style={{
+          right: DEPTH_PANEL_W,
           width: PRICE_SCALE_W,
           height: TIME_SCALE_H,
           backgroundColor: colors.chipBg,
@@ -4102,6 +4172,27 @@ export default function ChartHorizontal({
         </span>
       </div>
       <div
+        className="absolute right-0 top-0 flex items-center justify-center"
+        style={{
+          width: DEPTH_PANEL_W,
+          height: TIME_SCALE_H,
+          backgroundColor: colors.chipBg,
+          borderBottom: `1px solid ${colors.chipBorder}`,
+          borderLeft: `1px solid ${colors.chipBorder}`,
+        }}
+      >
+        <span
+          style={{
+            color: colors.controlText,
+            fontSize: "12px",
+            fontWeight: "600",
+            letterSpacing: "0.5px",
+          }}
+        >
+          Depth
+        </span>
+      </div>
+      <div
         className="absolute left-0"
         style={{ top: TIME_SCALE_H, width: chartAreaW, height: glHeight }}
       >
@@ -4112,14 +4203,87 @@ export default function ChartHorizontal({
         />
       </div>
       <div
-        className="absolute right-0"
-        style={{ top: TIME_SCALE_H, width: PRICE_SCALE_W, height: glHeight }}
+        className="absolute"
+        style={{
+          right: DEPTH_PANEL_W,
+          top: TIME_SCALE_H,
+          width: PRICE_SCALE_W,
+          height: glHeight,
+        }}
       >
         <canvas ref={priceBaseRef} className="absolute inset-0" />
         <canvas
           ref={priceOverlayRef}
           className="pointer-events-none absolute inset-0"
         />
+      </div>
+      <div
+        className="absolute right-0"
+        style={{
+          top: TIME_SCALE_H,
+          width: DEPTH_PANEL_W,
+          height: glHeight,
+          backgroundColor: colors.chipBg,
+          borderLeft: `1px solid ${colors.chipBorder}`,
+        }}
+      >
+        <div className="relative w-full h-full">
+          {depthSnapshot?.buy_levels?.length || depthSnapshot?.sell_levels?.length ? (
+            <>
+              <div
+                className="absolute left-1 top-2 text-[10px]"
+                style={{ color: colors.upColor }}
+              >
+                Buy
+              </div>
+              <div
+                className="absolute right-1 top-2 text-[10px] text-right"
+                style={{ color: colors.downColor }}
+              >
+                Sell
+              </div>
+              {depthSnapshot?.buy_levels?.map((level, idx) => {
+                const y = Math.round(scale.y(level.price) - TOP);
+                if (y < -12 || y > glHeight + 12) return null;
+                return (
+                  <div
+                    key={`buy-${idx}-${level.price}`}
+                    className="absolute left-1 pr-1 text-[11px] tabular-nums"
+                    style={{
+                      top: y - 8,
+                      color: colors.upColor,
+                    }}
+                  >
+                    {formatVol(level.quantity)}
+                  </div>
+                );
+              })}
+              {depthSnapshot?.sell_levels?.map((level, idx) => {
+                const y = Math.round(scale.y(level.price) - TOP);
+                if (y < -12 || y > glHeight + 12) return null;
+                return (
+                  <div
+                    key={`sell-${idx}-${level.price}`}
+                    className="absolute right-1 pl-1 text-[11px] tabular-nums text-right"
+                    style={{
+                      top: y - 8,
+                      color: colors.downColor,
+                    }}
+                  >
+                    {formatVol(level.quantity)}
+                  </div>
+                );
+              })}
+            </>
+          ) : (
+            <div
+              className="absolute inset-0 flex items-center justify-center text-xs"
+              style={{ color: colors.emptyText }}
+            >
+              No depth
+            </div>
+          )}
+        </div>
       </div>
       {!mappedBars.length && !loadingBars && (
         <div

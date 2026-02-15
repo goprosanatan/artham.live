@@ -9,6 +9,7 @@ export function connectLive({
 	onUnauthorized,
 	onBar,
 	onOrderEvent,
+	onDepth,
 	onSubscribed,
 	onUnsubscribed,
 	onSubscribedReplay,
@@ -29,6 +30,7 @@ export function connectLive({
 		socket.off("unauthorized", handleUnauthorized);
 		socket.off("bar", handleBar);
 		socket.off("order_event", handleOrderEvent);
+		socket.off("depth", handleDepth);
 		socket.off("subscribed", handleSubscribed);
 		socket.off("unsubscribed", handleUnsubscribed);
 		socket.off("subscribed_replay", handleSubscribedReplay);
@@ -58,6 +60,7 @@ export function connectLive({
 
 	const handleBar = (data) => onBar?.(data);
 	const handleOrderEvent = (data) => onOrderEvent?.(data);
+	const handleDepth = (data) => onDepth?.(data);
 	const handleSubscribed = (data) => onSubscribed?.(data);
 	const handleUnsubscribed = (data) => onUnsubscribed?.(data);
 	const handleSubscribedReplay = (data) => onSubscribedReplay?.(data);
@@ -71,6 +74,7 @@ export function connectLive({
 	socket.on("unauthorized", handleUnauthorized);
 	socket.on("bar", handleBar);
 	socket.on("order_event", handleOrderEvent);
+	socket.on("depth", handleDepth);
 	socket.on("subscribed", handleSubscribed);
 	socket.on("unsubscribed", handleUnsubscribed);
 	socket.on("subscribed_replay", handleSubscribedReplay);

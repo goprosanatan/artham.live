@@ -82,7 +82,7 @@ async def subscription_end(sid: str, async_redis_pool):
         total_cleaned = 0
         
         # Clean up subscriptions for each subscription type
-        for sub_type in BAR_STREAMS.keys():
+        for sub_type in STREAM_SUBSCRIPTIONS.keys():
             # Get all instruments this user was subscribed to for this type
             user_instruments = await redis_conn.smembers(f"ws:user.{sid}.{sub_type}.instruments")
             
@@ -248,6 +248,15 @@ BAR_STREAMS = {
     "bars.1D": "md:bars.live.1D",
 }
 
+# Feature streams for typed subscriptions
+FEATURE_STREAMS = {
+    "feature.equity_depth": config(
+        "STREAM_FEATURE_EQUITY", cast=str, default="md:feature:equity"
+    ),
+}
+
+STREAM_SUBSCRIPTIONS = {**BAR_STREAMS, **FEATURE_STREAMS}
+
 REPLAY_BAR_TYPES = {"bars.1m", "bars.1D"}
 REPLAY_STREAM_PREFIX = config("REPLAY_STREAM_PREFIX", cast=str, default="replay")
 REPLAY_STREAM_TEMPLATE_1M = config(
@@ -284,8 +293,8 @@ ORDER_EVENT_TYPES = {
 
 
 async def init_consumer_groups(redis_conn):
-    """Create consumer groups for bar streams if they don't exist."""
-    for sub_type, stream_key in BAR_STREAMS.items():
+    """Create consumer groups for all subscribed streams if they don't exist."""
+    for sub_type, stream_key in STREAM_SUBSCRIPTIONS.items():
         try:
             await redis_conn.xgroup_create(
                 stream_key,
@@ -301,7 +310,7 @@ async def init_consumer_groups(redis_conn):
 
 async def cleanup_inactive_instruments(redis_conn):
     """Remove instruments from active set that have no subscribers."""
-    for sub_type in BAR_STREAMS.keys():
+    for sub_type in STREAM_SUBSCRIPTIONS.keys():
         active_instruments = await redis_conn.smembers(f"ws:active_instruments.{sub_type}")
         
         for instrument_id in active_instruments:
@@ -319,10 +328,10 @@ async def websocket_fanout_service(async_redis_pool):
     """
     logger.info("[FANOUT] WebSocket fanout service started")
 
-    async def bars_loop():
+    async def stream_loop():
         redis_conn = redis.Redis(connection_pool=async_redis_pool)
         await init_consumer_groups(redis_conn)
-        streams_dict = {stream_key: ">" for stream_key in BAR_STREAMS.values()}
+        streams_dict = {stream_key: ">" for stream_key in STREAM_SUBSCRIPTIONS.values()}
 
         while True:
             try:
@@ -340,20 +349,23 @@ async def websocket_fanout_service(async_redis_pool):
                     continue
 
                 for stream_key, messages in resp:
-                    sub_type = next((st for st, sk in BAR_STREAMS.items() if sk == stream_key), None)
+                    sub_type = next(
+                        (st for st, sk in STREAM_SUBSCRIPTIONS.items() if sk == stream_key),
+                        None,
+                    )
                     if not sub_type:
                         logger.warning(f"Unknown stream key: {stream_key}")
                         continue
 
                     for msg_id, values in messages:
                         try:
-                            bar_data = {}
+                            payload_data = {}
                             for key, value in values.items():
                                 k = key.decode() if isinstance(key, bytes) else key
                                 v = value.decode() if isinstance(value, bytes) else value
-                                bar_data[k] = v
+                                payload_data[k] = v
 
-                            instrument_id = bar_data.get("instrument_id")
+                            instrument_id = payload_data.get("instrument_id")
                             if not instrument_id or instrument_id == "None":
                                 logger.warning(f"Message {msg_id} has invalid instrument_id: {instrument_id}, skipping")
                                 await redis_conn.xack(stream_key, FANOUT_CONSUMER_GROUP, msg_id)
@@ -363,32 +375,96 @@ async def websocket_fanout_service(async_redis_pool):
                             subscribers = await redis_conn.smembers(f"ws:instrument.{sub_type}.{instrument_id}.users")
 
                             if subscribers:
-                                for sid in subscribers:
-                                    try:
-                                        print(f"Emitting {sub_type} bar for instrument {instrument_id} to user {sid}")
-                                        await websocket.emit(
-                                            "bar",
-                                            {"type": sub_type, "data": bar_data},
-                                            room=sid,
-                                        )
-                                    except Exception as e:
-                                        logger.error(f"Failed to emit to {sid}: {e}")
+                                if sub_type.startswith("bars."):
+                                    for sid in subscribers:
+                                        try:
+                                            print(f"Emitting {sub_type} bar for instrument {instrument_id} to user {sid}")
+                                            await websocket.emit(
+                                                "bar",
+                                                {"type": sub_type, "data": payload_data},
+                                                room=sid,
+                                            )
+                                        except Exception as e:
+                                            logger.error(f"Failed to emit to {sid}: {e}")
 
-                                logger.debug(
-                                    f"[FANOUT] Sent {sub_type} bar for instrument {instrument_id} to {len(subscribers)} users"
-                                )
+                                    logger.debug(
+                                        f"[FANOUT] Sent {sub_type} bar for instrument {instrument_id} to {len(subscribers)} users"
+                                    )
+                                elif sub_type == "feature.equity_depth":
+                                    buy_levels_raw = payload_data.get("buy_levels") or "{}"
+                                    sell_levels_raw = payload_data.get("sell_levels") or "{}"
+                                    try:
+                                        buy_levels_map = json.loads(buy_levels_raw)
+                                    except Exception:
+                                        buy_levels_map = {}
+                                    try:
+                                        sell_levels_map = json.loads(sell_levels_raw)
+                                    except Exception:
+                                        sell_levels_map = {}
+
+                                    def _to_float(val):
+                                        try:
+                                            return float(val)
+                                        except Exception:
+                                            return None
+
+                                    def _to_int(val):
+                                        try:
+                                            return int(float(val))
+                                        except Exception:
+                                            return None
+
+                                    def _levels_to_list(levels_map, side):
+                                        levels = []
+                                        for _, level in levels_map.items():
+                                            price = _to_float(level.get("price"))
+                                            qty = _to_int(level.get("quantity"))
+                                            orders = _to_int(level.get("orders"))
+                                            ratio = _to_float(level.get("ratio"))
+                                            if price is None or qty is None:
+                                                continue
+                                            levels.append(
+                                                {
+                                                    "price": price,
+                                                    "quantity": qty,
+                                                    "orders": orders,
+                                                    "ratio": ratio,
+                                                }
+                                            )
+                                        reverse = side == "buy"
+                                        levels.sort(key=lambda x: x["price"], reverse=reverse)
+                                        return levels
+
+                                    depth_payload = {
+                                        "instrument_id": instrument_id,
+                                        "last_price": _to_float(payload_data.get("last_price")),
+                                        "exchange_ts": payload_data.get("exchange_ts"),
+                                        "ingest_ts": payload_data.get("ingest_ts"),
+                                        "buy_levels": _levels_to_list(buy_levels_map, "buy"),
+                                        "sell_levels": _levels_to_list(sell_levels_map, "sell"),
+                                    }
+
+                                    for sid in subscribers:
+                                        try:
+                                            await websocket.emit(
+                                                "depth",
+                                                {"type": sub_type, "data": depth_payload},
+                                                room=sid,
+                                            )
+                                        except Exception as e:
+                                            logger.error(f"Failed to emit depth to {sid}: {e}")
 
                             await redis_conn.xack(stream_key, FANOUT_CONSUMER_GROUP, msg_id)
 
                         except Exception as e:
-                            logger.error(f"Error processing bar message from {stream_key}: {e}")
+                            logger.error(f"Error processing message from {stream_key}: {e}")
                             await redis_conn.xack(stream_key, FANOUT_CONSUMER_GROUP, msg_id)
 
             except asyncio.CancelledError:
-                logger.info("[FANOUT] Bars loop cancelled")
+                logger.info("[FANOUT] Stream loop cancelled")
                 break
             except Exception as e:
-                logger.exception(f"[FANOUT] Error in bars loop: {e}")
+                logger.exception(f"[FANOUT] Error in stream loop: {e}")
                 await asyncio.sleep(1)
 
         await redis_conn.close()
@@ -499,7 +575,7 @@ async def websocket_fanout_service(async_redis_pool):
 
         await redis_conn.close()
 
-    bars_task = asyncio.create_task(bars_loop())
+    bars_task = asyncio.create_task(stream_loop())
     orders_task = asyncio.create_task(order_events_loop())
 
     try:
@@ -583,8 +659,12 @@ async def subscribe(sid, data):
         instruments = data.get("instruments", [])
         
         # Validate subscription type
-        if not sub_type or sub_type not in BAR_STREAMS:
-            await websocket.emit("error", {"message": f"Invalid subscription type. Must be one of: {list(BAR_STREAMS.keys())}"}, room=sid)
+        if not sub_type or sub_type not in STREAM_SUBSCRIPTIONS:
+            await websocket.emit(
+                "error",
+                {"message": f"Invalid subscription type. Must be one of: {list(STREAM_SUBSCRIPTIONS.keys())}"},
+                room=sid,
+            )
             return
         
         if not isinstance(instruments, list):
@@ -633,8 +713,12 @@ async def unsubscribe(sid, data):
         instruments = data.get("instruments", [])
         
         # Validate subscription type
-        if not sub_type or sub_type not in BAR_STREAMS:
-            await websocket.emit("error", {"message": f"Invalid subscription type. Must be one of: {list(BAR_STREAMS.keys())}"}, room=sid)
+        if not sub_type or sub_type not in STREAM_SUBSCRIPTIONS:
+            await websocket.emit(
+                "error",
+                {"message": f"Invalid subscription type. Must be one of: {list(STREAM_SUBSCRIPTIONS.keys())}"},
+                room=sid,
+            )
             return
         
         if not isinstance(instruments, list):
@@ -672,11 +756,11 @@ async def get_subscriptions(sid, data):
     """Get list of all instruments the user is currently subscribed to."""
     try:
         sub_type = data.get("type")
-        if not sub_type or sub_type not in BAR_STREAMS:
+        if not sub_type or sub_type not in STREAM_SUBSCRIPTIONS:
             await websocket.emit(
                 "error",
                 {
-                    "message": f"Invalid subscription type. Must be one of: {list(BAR_STREAMS.keys())}"
+                    "message": f"Invalid subscription type. Must be one of: {list(STREAM_SUBSCRIPTIONS.keys())}"
                 },
                 room=sid,
             )
