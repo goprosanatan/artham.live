@@ -40,7 +40,7 @@ logging.basicConfig(
    format="%(asctime)s %(levelname)-8s %(message)s",
 )
 
-logger.debug("Option Engine starting up")
+logger.debug("Feature Option starting up")
 
 
 # Streams and config
