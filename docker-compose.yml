@@ -63,6 +63,7 @@ services:
       - tick_store
       - bar_builder
       - bar_store
+      - feature_equity
       - order_broker_adapter
       - order_command_service
       - order_risk_manager
@@ -203,6 +204,56 @@ services:
       redis:
         condition: service_healthy
       postgres:
+        condition: service_healthy
+    networks:
+      - artham_net
+
+  feature_equity:
+    build:
+      context: .
+      dockerfile: services/Dockerfile
+    image: artham_feature_01_equity:latest
+    container_name: artham_feature_01_equity
+    command: [ "python", "feature_01_equity.py" ]
+    env_file:
+      - ./services/.env
+    environment:
+      TZ: Asia/Kolkata
+      DIR_LOGS: /logs
+      REDIS_HOST: redis
+      REDIS_PORT: 6379
+    ports:
+      - "9212:9212"
+    volumes:
+      - logs_data:/logs
+    restart: unless-stopped
+    depends_on:
+      redis:
+        condition: service_healthy
+    networks:
+      - artham_net
+
+  feature_option:
+    build:
+      context: .
+      dockerfile: services/Dockerfile
+    image: artham_feature_02_option:latest
+    container_name: artham_feature_02_option
+    command: [ "python", "feature_02_option.py" ]
+    env_file:
+      - ./services/.env
+    environment:
+      TZ: Asia/Kolkata
+      DIR_LOGS: /logs
+      REDIS_HOST: redis
+      REDIS_PORT: 6379
+    ports:
+      - "9213:9213"
+    volumes:
+      - logs_data:/logs
+    restart: unless-stopped
+    depends_on:
+      redis:
         condition: service_healthy
     networks:
       - artham_net
