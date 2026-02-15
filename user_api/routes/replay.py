@@ -81,9 +81,9 @@ async def replay_session_control(
     redis_conn=Depends(get_redis_conn),
 ):
     action = str(payload.get("action", "")).lower().strip()
-    if action not in {"pause", "resume", "stop", "restart"}:
+    if action not in {"pause", "resume", "restart"}:
         return JSONResponse(
-            content=json.dumps({"message": "Invalid action. Use pause, resume, stop, or restart."}),
+            content=json.dumps({"message": "Invalid action. Use pause, resume, or restart."}),
             status_code=status.HTTP_400_BAD_REQUEST,
         )
 
