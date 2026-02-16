@@ -217,9 +217,9 @@ GROUP_NAME = config("BAR_STORE_GROUP", cast=str)
 BATCH_SIZE = config("BAR_STORE_BATCH_SIZE", cast=int)
 FLUSH_MS = config("BAR_STORE_FLUSH_MS", cast=int)
 METRICS_PORT = config("BAR_STORE_METRICS_PORT", cast=int)
-
-# Bar timeframes to listen for
-BAR_TIMEFRAMES = ["1m", "1D"]
+STREAM_BARS_FINAL_1M = config("STREAM_BARS_FINAL_1M", cast=str)
+STREAM_BARS_FINAL_1D = config("STREAM_BARS_FINAL_1D", cast=str)
+FINAL_BAR_STREAMS = [STREAM_BARS_FINAL_1M, STREAM_BARS_FINAL_1D]
 
 # -------------------------------------
 # Prometheus Metrics
@@ -248,20 +248,23 @@ BARSTORE_REDIS_CONNECTED = Gauge(
 )
 
 
-# Helper: Redis Stream Keys
-# -----------------------------
-def stream_key_bar_final(timeframe: str) -> str:
-    """Redis stream key for FINAL bars: bar:final:{tf}"""
-    return f"md:bars.final.{timeframe}"
+def validate_stream_config() -> None:
+    """Fail fast when required stream names are empty."""
+    required_streams = {
+        "STREAM_BARS_FINAL_1M": STREAM_BARS_FINAL_1M,
+        "STREAM_BARS_FINAL_1D": STREAM_BARS_FINAL_1D,
+    }
+    missing = [name for name, value in required_streams.items() if not value.strip()]
+    if missing:
+        raise ValueError(f"Missing/blank stream env values: {', '.join(missing)}")
 
 
 # --------------------------------
 # Ensure consumer group exists
 # --------------------------------
-async def init_consumer_groups(timeframes):
-    """Create consumer groups for all instrument × timeframe combinations (FINAL stream only)."""
-    for tf in timeframes:
-        key = stream_key_bar_final(tf)
+async def init_consumer_groups(stream_keys):
+    """Create consumer groups for all FINAL bar streams."""
+    for key in stream_keys:
         try:
             await REDIS_CONN.xgroup_create(
                 name=key,
@@ -327,6 +330,12 @@ async def ingest_bars(raw_bars: list, pg_conn: psycopg.AsyncConnection):
 # Main Worker: Consume Redis → Insert DB
 # --------------------------------
 async def worker():
+    validate_stream_config()
+    logger.info(
+        "Using final bar streams final_1m=%s final_1D=%s",
+        STREAM_BARS_FINAL_1M,
+        STREAM_BARS_FINAL_1D,
+    )
 
     PG_CONN = await psycopg.AsyncConnection.connect(
         dbname=config("POSTGRES_DB", cast=str),
@@ -351,13 +360,13 @@ async def worker():
         BARSTORE_REDIS_CONNECTED.set(0)
 
     # Subscribe to all timeframe streams (no per-instrument streams)
-    await init_consumer_groups(BAR_TIMEFRAMES)
+    await init_consumer_groups(FINAL_BAR_STREAMS)
 
     logger.info("Bar store ready. Starting consumption loop.")
     print("[BAR_STORE] Ready. Starting consumption loop.")
     # Build stream subscriptions: {stream_key: ">"} for xreadgroup
     # Subscribe only to FINAL streams (bar:final:{tf}), not in-progress
-    streams = {stream_key_bar_final(tf): ">" for tf in BAR_TIMEFRAMES}
+    streams = {stream_key: ">" for stream_key in FINAL_BAR_STREAMS}
 
     buffer = []
     last_flush = datetime.now()

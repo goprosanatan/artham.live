@@ -255,16 +255,24 @@ METRICS_PORT = config("BAR_BUILDER_METRICS_PORT", cast=int)
 SESSION_EXCHANGE = "NSE"
 
 STREAM_TICKS = config("STREAM_TICKS", cast=str)
+STREAM_BARS_LIVE_1M = config("STREAM_BARS_LIVE_1M", cast=str)
+STREAM_BARS_LIVE_1D = config("STREAM_BARS_LIVE_1D", cast=str)
+STREAM_BARS_FINAL_1M = config("STREAM_BARS_FINAL_1M", cast=str)
+STREAM_BARS_FINAL_1D = config("STREAM_BARS_FINAL_1D", cast=str)
 
 
-def bar_stream_live(timeframe: str):
-    """Stream key for live bars"""
-    return f"md:bars.live.{timeframe}"
-
-
-def bar_stream_final(timeframe: str):
-    """Stream key for final/complete bars"""
-    return f"md:bars.final.{timeframe}"
+def validate_stream_config() -> None:
+    """Fail fast when required stream names are empty."""
+    required_streams = {
+        "STREAM_TICKS": STREAM_TICKS,
+        "STREAM_BARS_LIVE_1M": STREAM_BARS_LIVE_1M,
+        "STREAM_BARS_LIVE_1D": STREAM_BARS_LIVE_1D,
+        "STREAM_BARS_FINAL_1M": STREAM_BARS_FINAL_1M,
+        "STREAM_BARS_FINAL_1D": STREAM_BARS_FINAL_1D,
+    }
+    missing = [name for name, value in required_streams.items() if not value.strip()]
+    if missing:
+        raise ValueError(f"Missing/blank stream env values: {', '.join(missing)}")
 
 
 def minute_key(dt: datetime):
@@ -371,6 +379,16 @@ def normalize_for_redis(payload: dict) -> dict:
 
 
 async def worker():
+    validate_stream_config()
+    logger.info(
+        "Using streams ticks=%s live_1m=%s live_1D=%s final_1m=%s final_1D=%s",
+        STREAM_TICKS,
+        STREAM_BARS_LIVE_1M,
+        STREAM_BARS_LIVE_1D,
+        STREAM_BARS_FINAL_1M,
+        STREAM_BARS_FINAL_1D,
+    )
+
     # Connectivity check
     try:
         if await REDIS_CONN.ping():
@@ -484,7 +502,7 @@ async def worker():
                                     }
                                 )
                                 await REDIS_CONN.xadd(
-                                    name=bar_stream_final("1m"),
+                                    name=STREAM_BARS_FINAL_1M,
                                     fields=final_bar_1m,
                                     maxlen=10000,
                                     approximate=True,
@@ -520,7 +538,7 @@ async def worker():
                                     }
                                 )
                                 await REDIS_CONN.xadd(
-                                    name=bar_stream_final("1D"),
+                                    name=STREAM_BARS_FINAL_1D,
                                     fields=final_bar_1D,
                                     maxlen=3650,
                                     approximate=True,
@@ -659,7 +677,7 @@ async def worker():
                                 )
 
                             await REDIS_CONN.xadd(
-                                name=bar_stream_final("1m"),
+                                name=STREAM_BARS_FINAL_1M,
                                 fields=final_bar_1m,
                                 maxlen=10000,
                                 approximate=True,
@@ -698,7 +716,7 @@ async def worker():
                                     "\n\n",
                                 )
                             await REDIS_CONN.xadd(
-                                name=bar_stream_final("1D"),
+                                name=STREAM_BARS_FINAL_1D,
                                 fields=final_bar_1D,
                                 maxlen=3650,
                                 approximate=True,
@@ -730,7 +748,7 @@ async def worker():
                     #     print("LIVE MINUTE BAR ====== ", live_bar_1m, "\n")
 
                     await REDIS_CONN.xadd(
-                        name=bar_stream_live("1m"),
+                        name=STREAM_BARS_LIVE_1M,
                         fields=live_bar_1m,
                         maxlen=2000,
                         approximate=True,
@@ -746,7 +764,7 @@ async def worker():
                     )
                     # print("LIVE DAY BAR ====== ", live_bar_1D)
                     await REDIS_CONN.xadd(
-                        name=bar_stream_live("1D"),
+                        name=STREAM_BARS_LIVE_1D,
                         fields=live_bar_1D,
                         maxlen=400,
                         approximate=True,
