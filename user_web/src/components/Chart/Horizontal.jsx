@@ -88,6 +88,9 @@ const computeGap = (w) => {
   return 1; // Very zoomed out
 };
 
+const isSyntheticBar = (bar) =>
+  !!(bar && (bar.isFuture || bar.isGap || bar.isSynthetic));
+
 // Validates selector levels to ensure target/stop sit on opposite sides of entry.
 // Returns direction (long/short), readiness flag, and an error message when invalid.
 const validateTradeSelectorLevels = (levels) => {
@@ -1131,41 +1134,49 @@ export default function ChartHorizontal({
   const timelineBars = useMemo(() => {
     if (!slots.length) return bars; // Fallback if no slots
 
-    // Get baseline close for placeholders
-    const baselineClose =
-      bars.length && Number.isFinite(bars[bars.length - 1]?.close)
-        ? bars[bars.length - 1].close
-        : 0;
-
     // Create a map of bar timestamps to bar data for O(1) lookup
     const barMap = new Map();
     bars.forEach((bar) => {
       barMap.set(bar.date, bar);
     });
 
-    // Build timeline: for each slot, use bar if exists, else placeholder
-    return slots
-      .map((slotTs) => {
-        const ts = Number(slotTs);
-        if (!Number.isFinite(ts)) return null;
+    const sortedSlotTimestamps = slots
+      .map((slotTs) => Number(slotTs))
+      .filter((ts) => Number.isFinite(ts))
+      .sort((a, b) => a - b);
 
-        const bar = barMap.get(ts);
-        if (bar) {
-          return bar;
-        } else {
-          // Placeholder for missing slot
-          return {
-            date: ts,
-            open: baselineClose,
-            high: baselineClose,
-            low: baselineClose,
-            close: baselineClose,
-            volume: 0,
-            isFuture: true,
-          };
-        }
-      })
-      .filter((b) => b !== null);
+    if (!sortedSlotTimestamps.length) return bars;
+
+    const firstActualClose =
+      bars.find((bar) => Number.isFinite(bar?.close))?.close ?? 0;
+    const lastActualTs = bars.length ? Number(bars[bars.length - 1]?.date) : null;
+    let carryForwardClose = firstActualClose;
+
+    // Build timeline: for each slot, use bar if exists, else synthetic gap/future placeholder.
+    return sortedSlotTimestamps.map((ts) => {
+      const bar = barMap.get(ts);
+      if (bar) {
+        if (Number.isFinite(bar.close)) carryForwardClose = bar.close;
+        return bar;
+      }
+
+      const syntheticClose = Number.isFinite(carryForwardClose)
+        ? carryForwardClose
+        : firstActualClose;
+      const isFuture = Number.isFinite(lastActualTs) ? ts > lastActualTs : true;
+
+      return {
+        date: ts,
+        open: syntheticClose,
+        high: syntheticClose,
+        low: syntheticClose,
+        close: syntheticClose,
+        volume: 0,
+        isFuture,
+        isGap: !isFuture,
+        isSynthetic: true,
+      };
+    });
   }, [bars, slots]);
 
   // Fast lookup from bar timestamp to its index within the timeline (used to realign saved orders)
@@ -1206,7 +1217,7 @@ export default function ChartHorizontal({
   const lastActualIndex = useMemo(() => {
     for (let i = timelineBars.length - 1; i >= 0; i--) {
       const b = timelineBars[i];
-      if (b && !b.isFuture) return i;
+      if (b && !isSyntheticBar(b)) return i;
     }
     return -1;
   }, [timelineBars]);
@@ -1451,18 +1462,47 @@ export default function ChartHorizontal({
       index++
     ) {
       const bar = timelineBars[index];
-      if (!bar) continue;
-      const priceSource =
-        bar.isFuture && latestActualBar ? latestActualBar : bar;
-      if (priceSource.low < min) min = priceSource.low;
-      if (priceSource.high > max) max = priceSource.high;
+      if (!bar || isSyntheticBar(bar)) continue;
+      const low = Number(bar.low);
+      const high = Number(bar.high);
+      if (!Number.isFinite(low) || !Number.isFinite(high)) continue;
+      if (low < min) min = low;
+      if (high > max) max = high;
     }
 
-    // Fall back to latest actual bar if visible window has only future placeholders
+    // Fall back to nearest real bar if visible window has only synthetic slots.
     if (!Number.isFinite(min) || !Number.isFinite(max)) {
-      if (latestActualBar) {
-        min = latestActualBar.low;
-        max = latestActualBar.high;
+      let fallbackBar = null;
+
+      for (let i = visibleRange.scaleStart - 1; i >= 0; i--) {
+        const candidate = timelineBars[i];
+        if (candidate && !isSyntheticBar(candidate)) {
+          fallbackBar = candidate;
+          break;
+        }
+      }
+
+      if (!fallbackBar) {
+        for (let i = visibleRange.scaleEnd; i < barCount; i++) {
+          const candidate = timelineBars[i];
+          if (candidate && !isSyntheticBar(candidate)) {
+            fallbackBar = candidate;
+            break;
+          }
+        }
+      }
+
+      if (!fallbackBar && latestActualBar) {
+        fallbackBar = latestActualBar;
+      }
+
+      if (
+        fallbackBar &&
+        Number.isFinite(Number(fallbackBar.low)) &&
+        Number.isFinite(Number(fallbackBar.high))
+      ) {
+        min = Number(fallbackBar.low);
+        max = Number(fallbackBar.high);
       } else {
         min = 0;
         max = 1;
@@ -1523,8 +1563,7 @@ export default function ChartHorizontal({
 
     // Map each bar, adding pixel Y positions for all price points
     return timelineBars.map((bar) => {
-      const priceSource =
-        bar.isFuture && latestActualBar ? latestActualBar : bar;
+      const priceSource = bar;
       return {
         ...bar, // Keep original data (date, open, high, low, close, volume)
         yOpen: scale.y(priceSource.open) - TOP, // Opening price Y position (adjusted for top padding)
@@ -1533,7 +1572,7 @@ export default function ChartHorizontal({
         yLow: scale.y(priceSource.low) - TOP, // Low price Y position (bottom of wick)
       };
     });
-  }, [timelineBars, scale.min, scale.max, glHeight, TOP, latestActualBar]); // Recompute when scale or bars change
+  }, [timelineBars, scale.min, scale.max, glHeight, TOP]); // Recompute when scale or bars change
 
   /**
    * WebGL rendering effect: draws bars, wicks, and volume bars using GPU instancing.
@@ -1636,7 +1675,7 @@ export default function ChartHorizontal({
       // Scan visible bars to find peak volume
       for (let columnIndex = start; columnIndex < end; columnIndex++) {
         const bar = mappedBars[columnIndex];
-        if (bar && bar.volume > maxVol) maxVol = bar.volume;
+        if (bar && !isSyntheticBar(bar) && bar.volume > maxVol) maxVol = bar.volume;
       }
       // Prevent division by zero if all volumes are 0
       if (maxVol <= 0) maxVol = 1;
@@ -1648,7 +1687,7 @@ export default function ChartHorizontal({
     // Geometry is instanced: position + half-size + color packed into Float32Arrays, then sent to GPU.
     for (let columnIndex = start; columnIndex < end; columnIndex++) {
       const bar = mappedBars[columnIndex];
-      if (!bar || bar.isFuture) continue; // Skip placeholders; they only reserve timeline slots
+      if (!bar || isSyntheticBar(bar)) continue; // Skip synthetic placeholders; they only reserve timeline slots
 
       // Screen X position of bar center, accounting for pan offset and zoom
       const rawBarCenterX =
@@ -2372,7 +2411,7 @@ export default function ChartHorizontal({
       if (!mostRecentBar) {
         for (let i = mappedBars.length - 1; i >= 0; i--) {
           const candidate = mappedBars[i];
-          if (candidate && !candidate.isFuture) {
+          if (candidate && !isSyntheticBar(candidate)) {
             mostRecentBar = candidate;
             break;
           }
@@ -2718,7 +2757,7 @@ export default function ChartHorizontal({
       if (!latestBar) {
         for (let i = mappedBars.length - 1; i >= 0; i--) {
           const candidate = mappedBars[i];
-          if (candidate && !candidate.isFuture) {
+          if (candidate && !isSyntheticBar(candidate)) {
             latestBar = candidate;
             break;
           }
@@ -3297,7 +3336,7 @@ export default function ChartHorizontal({
     // Positioned at the top-left of the chart area.
     const clampedHoverIndex = clamp(hoverIndex, 0, mappedBars.length - 1);
     const hoveredBar = mappedBars[clampedHoverIndex];
-    const isFutureSlot = hoveredBar?.isFuture;
+    const isFutureSlot = isSyntheticBar(hoveredBar);
     let hoverColor = colors.textColor;
 
     let hoverSummary = "";
@@ -3308,7 +3347,7 @@ export default function ChartHorizontal({
         (() => {
           for (let i = mappedBars.length - 1; i >= 0; i--) {
             const candidate = mappedBars[i];
-            if (candidate && !candidate.isFuture) return candidate;
+            if (candidate && !isSyntheticBar(candidate)) return candidate;
           }
           return null;
         })();
