@@ -7,9 +7,38 @@ import Navigate from "@components/Navigate.jsx";
 import Panel from "@components/Panel.jsx";
 import { useOrderApi } from "@components/Chart/__API.js";
 import { connectLive } from "@components/Chart/__Websocket.js";
+import { formatVol } from "@components/Chart/__Common.js";
 import InstrumentList from "@components/InstrumentList.jsx";
 import ChartVertical from "@components/Chart/Vertical.jsx";
 import ChartHorizontal from "@components/Chart/Horizontal.jsx";
+
+const normalizeDepthLevels = (levels, side) => {
+  let list = [];
+  if (!levels) return list;
+  if (Array.isArray(levels)) {
+    list = levels;
+  } else if (typeof levels === "string") {
+    try {
+      const parsed = JSON.parse(levels);
+      list = Array.isArray(parsed) ? parsed : Object.values(parsed || {});
+    } catch {
+      list = [];
+    }
+  } else if (typeof levels === "object") {
+    list = Object.values(levels);
+  }
+
+  const normalized = list
+    .map((lvl) => ({
+      price: Number(lvl?.price),
+      quantity: Number(lvl?.quantity),
+      orders: Number(lvl?.orders),
+    }))
+    .filter((lvl) => Number.isFinite(lvl.price) && Number.isFinite(lvl.quantity));
+
+  normalized.sort((a, b) => (side === "buy" ? b.price - a.price : a.price - b.price));
+  return normalized;
+};
 
 const Dashboard = () => {
   const { token, setToken } = useAuth();
@@ -32,6 +61,7 @@ const Dashboard = () => {
   const [ordersError, setOrdersError] = useState("");
   const [selectedOrder, setSelectedOrder] = useState(null);
   const [orderFilter, setOrderFilter] = useState("active"); // "active", "completed", "all"
+  const [depthSnapshot, setDepthSnapshot] = useState(null);
 
   const startDashboard = async () => {
     try {
@@ -68,6 +98,64 @@ const Dashboard = () => {
   useEffect(() => {
     fetchOrders();
   }, []);
+
+  // Live market depth stream for the selected instrument.
+  useEffect(() => {
+    const instrumentId = selectedInstrument?.instrument_id;
+    if (!token || !instrumentId) return;
+
+    const instrumentIdStr = String(instrumentId);
+    let isSubscribed = false;
+
+    const { disconnect, subscribe, unsubscribe } = connectLive({
+      token,
+      onAuthenticated: () => {
+        subscribe?.([instrumentId], "feature.equity_depth");
+        isSubscribed = true;
+      },
+      onDepth: (payload) => {
+        if (!payload) return;
+        if (payload.type && payload.type !== "feature.equity_depth") return;
+
+        const data = payload.data || payload;
+        const payloadInstrumentId = data.instrument_id ?? data.instrumentId;
+        if (
+          payloadInstrumentId != null &&
+          String(payloadInstrumentId) !== instrumentIdStr
+        ) {
+          return;
+        }
+
+        const buyLevelsRaw =
+          data.buy_levels ?? data.buyLevels ?? data.buy ?? data.bids ?? [];
+        const sellLevelsRaw =
+          data.sell_levels ?? data.sellLevels ?? data.sell ?? data.asks ?? [];
+
+        setDepthSnapshot({
+          instrument_id: payloadInstrumentId ?? instrumentId,
+          last_price: Number(data.last_price),
+          exchange_ts: data.exchange_ts || null,
+          ingest_ts: data.ingest_ts || null,
+          buy_levels: normalizeDepthLevels(buyLevelsRaw, "buy"),
+          sell_levels: normalizeDepthLevels(sellLevelsRaw, "sell"),
+        });
+      },
+      onDisconnect: () => {
+        isSubscribed = false;
+      },
+    });
+
+    return () => {
+      if (isSubscribed) {
+        unsubscribe?.([instrumentId], "feature.equity_depth");
+      }
+      disconnect();
+    };
+  }, [token, selectedInstrument?.instrument_id]);
+
+  useEffect(() => {
+    setDepthSnapshot(null);
+  }, [selectedInstrument?.instrument_id]);
 
   // Listen for live order events via websocket; refresh list when events arrive.
   useEffect(() => {
@@ -184,6 +272,16 @@ const Dashboard = () => {
     setSelectedOrder(null);
   };
 
+  const buyLevels = depthSnapshot?.buy_levels || [];
+  const sellLevels = depthSnapshot?.sell_levels || [];
+  const depthRows = Array.from(
+    { length: Math.max(8, buyLevels.length, sellLevels.length) },
+    (_, idx) => ({
+      buy: buyLevels[idx] || null,
+      sell: sellLevels[idx] || null,
+    })
+  );
+
   return (
     <div className="flex flex-col h-screen p-1 gap-1 dark:bg-gray-500">
       <Navigate
@@ -191,10 +289,60 @@ const Dashboard = () => {
         profile={profile}
       />
       <div id="" className="grow flex flex-row items-stretch gap-1 min-h-0">
-        <InstrumentList
-          onSelectInstrument={handleInstrumentSelect}
-          className="basis-1/6"
-        />
+        <div className="basis-1/6 min-w-0 flex flex-col gap-1">
+          <InstrumentList
+            onSelectInstrument={handleInstrumentSelect}
+            className="flex-1 min-h-0"
+          />
+          <div className="h-64 rounded-lg border border-gray-300 bg-white/70 dark:bg-gray-700 dark:border-gray-600 flex flex-col overflow-hidden">
+            <div className="px-3 py-2 border-b border-gray-300 dark:border-gray-600 flex items-center justify-between">
+              <div className="text-sm font-semibold text-gray-800 dark:text-gray-100">
+                Market Depth
+              </div>
+              <div className="text-[11px] text-gray-600 dark:text-gray-300">
+                {selectedInstrument?.trading_symbol || selectedInstrument?.instrument_id || "--"}
+              </div>
+            </div>
+            <div className="px-3 py-1.5 border-b border-gray-200 dark:border-gray-600 text-xs text-gray-700 dark:text-gray-200">
+              LTP: {Number.isFinite(depthSnapshot?.last_price) ? depthSnapshot.last_price : "--"}
+            </div>
+            <div className="grid grid-cols-2 gap-0 border-b border-gray-200 dark:border-gray-600">
+              <div className="px-2 py-1 text-[11px] font-semibold text-green-700 dark:text-green-300 border-r border-gray-200 dark:border-gray-600">
+                Buy (Qty / Orders)
+              </div>
+              <div className="px-2 py-1 text-[11px] font-semibold text-red-700 dark:text-red-300">
+                Sell (Qty / Orders)
+              </div>
+            </div>
+            <div className="flex-1 overflow-y-auto">
+              {!buyLevels.length && !sellLevels.length ? (
+                <div className="h-full flex items-center justify-center text-xs text-gray-500 dark:text-gray-300">
+                  Waiting for depth updates...
+                </div>
+              ) : (
+                <div className="flex flex-col">
+                  {depthRows.map((row, idx) => (
+                    <div
+                      key={`depth-row-${idx}`}
+                      className="grid grid-cols-2 text-[11px] border-b border-gray-100 dark:border-gray-600"
+                    >
+                      <div className="px-2 py-1 border-r border-gray-100 dark:border-gray-600 text-green-700 dark:text-green-300 tabular-nums">
+                        {row.buy
+                          ? `${formatVol(row.buy.quantity)} / ${Number.isFinite(row.buy.orders) ? Math.trunc(row.buy.orders) : "-"} @ ${row.buy.price}`
+                          : "--"}
+                      </div>
+                      <div className="px-2 py-1 text-red-700 dark:text-red-300 tabular-nums">
+                        {row.sell
+                          ? `${formatVol(row.sell.quantity)} / ${Number.isFinite(row.sell.orders) ? Math.trunc(row.sell.orders) : "-"} @ ${row.sell.price}`
+                          : "--"}
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+          </div>
+        </div>
         <ChartHorizontal
           instrumentId={selectedInstrument.instrument_id}
           className="grow rounded-lg"
