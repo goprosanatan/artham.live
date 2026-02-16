@@ -608,6 +608,16 @@ async def place_exit_orders(bracket: dict):
         )
         print_state_change(bracket_id, old_state, new_state)
 
+        await publish_event(
+            "EXIT_ORDERS_PLACED",
+            bracket_id,
+            details={
+                "target_order_id": target_order_id,
+                "stoploss_order_id": stoploss_order_id,
+                "exit_qty": exit_qty,
+                "remaining_qty": remaining_qty,
+            },
+        )
         await publish_event("TARGET_PLACED", bracket_id, target_order_id, details=target_order)
         await publish_event("STOPLOSS_PLACED", bracket_id, stoploss_order_id, details=stoploss_order)
 
