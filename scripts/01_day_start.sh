@@ -59,7 +59,7 @@ echo "Python script executed."
 
 echo "Restarting python services..."
 # Restart the python services
-docker compose restart tick_ingestor tick_store bar_builder bar_store order_broker_adapter order_command_service order_risk_manager order_state_manager order_execution_engine
+docker compose restart tick_ingestor tick_store bar_builder bar_store feature_equity feature_option order_broker_adapter order_command_service order_risk_manager order_state_manager order_execution_engine replay_engine replay_bar_builder 
 echo "Services restarted."
 
 
