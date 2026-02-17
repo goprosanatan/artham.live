@@ -132,21 +132,37 @@ class KITE_API:
         df["description"] = None
         df["timezone"] = "Asia/Kolkata"
         df["expired"] = False
+        df["active"] = False
         df["isin"] = None
         df["display_order"] = None
 
         # Process each instrument
         for idx, row in df.iterrows():
             inst_type = row["instrument_type"].upper()
+            exchange = (row.get("exchange") or "").upper()
+            trading_symbol = (row.get("tradingsymbol") or "").upper()
+            underlying_name = (row.get("name") or "").upper()
 
             # For derivatives, resolve underlying
             if inst_type in ("CE", "PE", "FUT"):
-                underlying_name = row["name"]
                 underlying_id = self._resolve_underlying_instrument_id(
-                    underlying_name, base_lookup, alias_map
+                    row["name"], base_lookup, alias_map
                 )
                 df.loc[idx, "underlying_instrument_id"] = underlying_id
-                df.loc[idx, "underlying_trading_symbol"] = underlying_name
+                df.loc[idx, "underlying_trading_symbol"] = row["name"]
+
+            # Mark only RELIANCE equity (NSE/BSE) and its derivatives (NFO/BFO) as active.
+            is_reliance_equity = (
+                inst_type == "EQ"
+                and trading_symbol == "RELIANCE"
+                and exchange in ("NSE", "BSE")
+            )
+            is_reliance_derivative = (
+                inst_type in ("FUT", "CE", "PE")
+                and underlying_name == "RELIANCE"
+                and exchange in ("NFO", "BFO")
+            )
+            df.loc[idx, "active"] = is_reliance_equity or is_reliance_derivative
 
             # Generate description
             description = self._format_description(
@@ -191,6 +207,7 @@ class KITE_API:
             "lot_size",
             "tick_size",
             "expired",
+            "active",
             "display_order",
         ]
 

@@ -17,6 +17,7 @@ CREATE TABLE IF NOT EXISTS public.instruments (
     expiry DATE,
     lot_size NUMERIC(10,0),
     tick_size NUMERIC(10,4),
+    active BOOLEAN NOT NULL DEFAULT FALSE,
     display_order INTEGER NOT NULL DEFAULT 0,
     expired BOOLEAN NOT NULL,
 
@@ -67,4 +68,3 @@ CREATE INDEX IF NOT EXISTS idx_instruments_exchange_trgm
 --      psql -U postgres -d artham < ./postgres-init/001_create_instruments.sql
 
 -- ========================================================================
-

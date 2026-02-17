@@ -3648,7 +3648,8 @@ export default function ChartVertical({
         const res = await searchInstrument(
           searchExchange,
           searchSegment,
-          trimmed
+          trimmed,
+          true
         );
         // Safety check: ensure response is an array before setting state
         setSearchResults(Array.isArray(res) ? res : []);

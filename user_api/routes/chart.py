@@ -108,6 +108,7 @@ async def instrument_search(
     exchange: str,
     segment: str,
     trading_symbol: str,
+    active: Optional[bool] = True,
     email_id=Depends(auth.verify_access_token),
     pg_conn=Depends(get_pg_conn),
 ):
@@ -117,6 +118,7 @@ async def instrument_search(
         exchange_text=exchange,
         segment_text=segment,
         trading_symbol_text=trading_symbol,
+        active=active,
     )
 
     return JSONResponse(

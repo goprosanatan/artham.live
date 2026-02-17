@@ -29,11 +29,12 @@ export function useChartApi() {
       });
       return typeof data === "string" ? JSON.parse(data) : data;
     },
-    searchInstrument: async (exchange, segment, trading_symbol) => {
+    searchInstrument: async (exchange, segment, trading_symbol, active = true) => {
       const data = await request("chart/instrument/search", "GET", {
         exchange,
         segment,
         trading_symbol,
+        active,
       });
       return typeof data === "string" ? JSON.parse(data) : data;
     },

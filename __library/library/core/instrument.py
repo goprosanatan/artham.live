@@ -87,6 +87,7 @@ class INSTRUMENT_SEARCH:
         description: Optional[str] = None,
         isin: Optional[str] = None,
         strike: Optional[Decimal] = None,
+        active: Optional[bool] = None,
     ) -> List[models.STANDARD_INSTRUMENT]:
         """Filter instruments by exact matches (case-sensitive)."""
         where_clauses, params = [], []
@@ -121,6 +122,11 @@ class INSTRUMENT_SEARCH:
         if strike:
             where_clauses.append("strike = %s")
             params.append(strike)
+        # active=True => only active instruments
+        # active=False/None => no filter (return all)
+        if active is True:
+            where_clauses.append("active = %s")
+            params.append(True)
 
         where = " AND ".join(where_clauses) if where_clauses else None
         return self._run_query(where, params)
@@ -140,6 +146,7 @@ class INSTRUMENT_SEARCH:
         description: Optional[str] = None,
         isin: Optional[str] = None,
         strike: Optional[Decimal] = None,
+        active: Optional[bool] = None,
     ) -> List[models.STANDARD_INSTRUMENT]:
         """Search instruments by partial match (ILIKE)."""
         where_clauses, params = [], []
@@ -169,6 +176,11 @@ class INSTRUMENT_SEARCH:
         if strike:
             where_clauses.append("strike = %s")
             params.append(strike)
+        # active=True => only active instruments
+        # active=False/None => no filter (return all)
+        if active is True:
+            where_clauses.append("active = %s")
+            params.append(True)
 
         where = " AND ".join(where_clauses) if where_clauses else None
         return self._run_query(where, params)
@@ -340,6 +352,7 @@ class INSTRUMENT_SEARCH_ASYNC:
         name: Optional[str] = None,
         isin: Optional[str] = None,
         strike: Optional[Decimal] = None,
+        active: Optional[bool] = None,
     ) -> List[models.STANDARD_INSTRUMENT]:
 
         where_clauses, params = [], []
@@ -368,6 +381,10 @@ class INSTRUMENT_SEARCH_ASYNC:
             add("isin", isin)
         if strike:
             add("strike", strike)
+        # active=True => only active instruments
+        # active=False/None => no filter (return all)
+        if active is True:
+            add("active", active)
 
         where = " AND ".join(where_clauses) if where_clauses else None
         return await self._run_query(where, params)
@@ -387,6 +404,7 @@ class INSTRUMENT_SEARCH_ASYNC:
         name: Optional[str] = None,
         isin: Optional[str] = None,
         strike: Optional[Decimal] = None,
+        active: Optional[bool] = None,
     ) -> List[models.STANDARD_INSTRUMENT]:
 
         where_clauses, params = [], []
@@ -416,6 +434,11 @@ class INSTRUMENT_SEARCH_ASYNC:
         if strike:
             where_clauses.append("strike = %s")
             params.append(strike)
+        # active=True => only active instruments
+        # active=False/None => no filter (return all)
+        if active is True:
+            where_clauses.append("active = %s")
+            params.append(True)
 
         where = " AND ".join(where_clauses) if where_clauses else None
         return await self._run_query(where, params)

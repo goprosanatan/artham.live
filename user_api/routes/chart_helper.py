@@ -76,6 +76,7 @@ async def search_instrument(
     exchange_text: str,
     segment_text: str,
     trading_symbol_text: str,
+    active: Optional[bool] = None,
 ):
     instrument_search = INSTRUMENT_SEARCH_ASYNC(pg_conn=pg_conn)
 
@@ -83,6 +84,7 @@ async def search_instrument(
         exchange=exchange_text,
         segment=segment_text,
         trading_symbol=trading_symbol_text,
+        active=active,
     )
 
     response = [item.model_dump() for item in result]

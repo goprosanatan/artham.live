@@ -283,6 +283,9 @@ class STANDARD_INSTRUMENT(BaseModel):
         ..., json_schema_extra={"psql_data_type": "NUMERIC(10,4)"}
     )
     expired: bool = Field(..., json_schema_extra={"psql_data_type": "BOOLEAN NOT NULL"})
+    active: bool = Field(
+        False, json_schema_extra={"psql_data_type": "BOOLEAN NOT NULL DEFAULT FALSE"}
+    )
     display_order: Decimal | None = Field(
         ..., json_schema_extra={"psql_data_type": "NUMERIC(1,0)"}
     )
