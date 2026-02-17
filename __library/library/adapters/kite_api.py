@@ -71,10 +71,10 @@ class KITE_API:
 
         if instrument_type in ("CE", "PE"):
             strike_str = f"{int(strike)}" if strike and strike > 0 else "NA"
-            return f"{name} {expiry_str} {strike_str} {instrument_type}"
+            return f"{name} {strike_str} {instrument_type} {expiry_str}"
 
         if instrument_type == "FUT":
-            return f"{name} {expiry_str} FUT"
+            return f"{name} FUT {expiry_str}"
 
         return name
 

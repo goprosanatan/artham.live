@@ -83,7 +83,7 @@ async def search_instrument(
     result = await instrument_search.search(
         exchange=exchange_text,
         segment=segment_text,
-        trading_symbol=trading_symbol_text,
+        query_text=trading_symbol_text,
         active=active,
     )
 

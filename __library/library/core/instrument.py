@@ -139,6 +139,7 @@ class INSTRUMENT_SEARCH:
         instrument_id: Optional[str] = None,
         exchange: Optional[str] = None,
         segment: Optional[str] = None,
+        query_text: Optional[str] = None,
         trading_symbol: Optional[str] = None,
         underlying_instrument_id: Optional[str] = None,
         underlying_trading_symbol: Optional[str] = None,
@@ -161,6 +162,11 @@ class INSTRUMENT_SEARCH:
             add_ilike("exchange", exchange)
         if segment:
             add_ilike("segment", segment)
+        if query_text:
+            where_clauses.append(
+                "(trading_symbol ILIKE %s OR description ILIKE %s OR underlying_trading_symbol ILIKE %s)"
+            )
+            params.extend([f"%{query_text}%", f"%{query_text}%", f"%{query_text}%"])
         if trading_symbol:
             add_ilike("trading_symbol", trading_symbol)
         if underlying_instrument_id:
@@ -349,7 +355,7 @@ class INSTRUMENT_SEARCH_ASYNC:
         underlying_instrument_id: Optional[str] = None,
         underlying_trading_symbol: Optional[str] = None,
         instrument_type: Optional[str] = None,
-        name: Optional[str] = None,
+        description: Optional[str] = None,
         isin: Optional[str] = None,
         strike: Optional[Decimal] = None,
         active: Optional[bool] = None,
@@ -375,8 +381,8 @@ class INSTRUMENT_SEARCH_ASYNC:
             add("underlying_trading_symbol", underlying_trading_symbol)
         if instrument_type:
             add("instrument_type", instrument_type)
-        if name:
-            add("name", name)
+        if description:
+            add("description", description)
         if isin:
             add("isin", isin)
         if strike:
@@ -397,11 +403,12 @@ class INSTRUMENT_SEARCH_ASYNC:
         instrument_id: Optional[str] = None,
         exchange: Optional[str] = None,
         segment: Optional[str] = None,
+        query_text: Optional[str] = None,
         trading_symbol: Optional[str] = None,
         underlying_instrument_id: Optional[str] = None,
         underlying_trading_symbol: Optional[str] = None,
         instrument_type: Optional[str] = None,
-        name: Optional[str] = None,
+        description: Optional[str] = None,
         isin: Optional[str] = None,
         strike: Optional[Decimal] = None,
         active: Optional[bool] = None,
@@ -419,6 +426,11 @@ class INSTRUMENT_SEARCH_ASYNC:
             ilike("exchange", exchange)
         if segment:
             ilike("segment", segment)
+        if query_text:
+            where_clauses.append(
+                "(trading_symbol ILIKE %s OR description ILIKE %s OR underlying_trading_symbol ILIKE %s)"
+            )
+            params.extend([f"%{query_text}%", f"%{query_text}%", f"%{query_text}%"])
         if trading_symbol:
             ilike("trading_symbol", trading_symbol)
         if underlying_instrument_id:
@@ -427,8 +439,8 @@ class INSTRUMENT_SEARCH_ASYNC:
             ilike("underlying_trading_symbol", underlying_trading_symbol)
         if instrument_type:
             ilike("instrument_type", instrument_type)
-        if name:
-            ilike("name", name)
+        if description:
+            ilike("description", description)
         if isin:
             ilike("isin", isin)
         if strike:
