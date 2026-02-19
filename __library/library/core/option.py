@@ -58,7 +58,7 @@ class EXPIRY:
         return days_to_expiry
 
 
-class BlackScholesOption:
+class BLACK_SCHOLES:
     """
     European option pricing, implied volatility and Greeks
     """
@@ -203,7 +203,7 @@ class BlackScholesOption:
         return g
 
 
-class Black76Option:
+class BLACK_76:
     """
     Black-76 model for European options on futures / forwards
     """

@@ -21,7 +21,7 @@ from prometheus_client import Counter, Gauge, Histogram, start_http_server
 from redis.asyncio import Redis
 from zoneinfo import ZoneInfo
 
-from library.core.option import EXPIRY, Black76Option
+from library.core.option import EXPIRY, BLACK_76
 
 
 # Configure custom timezone for logging
@@ -253,7 +253,7 @@ class OptionEngine:
       if t_days is None or t_days <= 0:
          return None
 
-      model = Black76Option(F=underlying_price, K=meta.strike, r=RISK_FREE_RATE, t_days=t_days)
+      model = BLACK_76(F=underlying_price, K=meta.strike, r=RISK_FREE_RATE, t_days=t_days)
 
       sigma = model.implied_vol(
          market_price=market_price,
