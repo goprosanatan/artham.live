@@ -197,17 +197,25 @@ def _fut_by_year_month(fut_models):
         buckets[key].sort(key=lambda f: f.expiry)
     return buckets
 
-fut_lookup = _fut_by_year_month(list_fut_models)
-
 def _pick_fut_for_option(opt):
     if not opt.expiry or not list_fut_models:
         return None
+    opt_underlying = (getattr(opt, "underlying_trading_symbol", "") or "").lower()
+    fut_models_same_underlying = [
+        fut
+        for fut in list_fut_models
+        if (getattr(fut, "underlying_trading_symbol", "") or "").lower() == opt_underlying
+    ]
+    if not fut_models_same_underlying:
+        return None
+
+    fut_lookup_same_underlying = _fut_by_year_month(fut_models_same_underlying)
     key = (opt.expiry.year, opt.expiry.month)
-    if key in fut_lookup and fut_lookup[key]:
-        return fut_lookup[key][0]
+    if key in fut_lookup_same_underlying and fut_lookup_same_underlying[key]:
+        return fut_lookup_same_underlying[key][0]
     try:
         return min(
-            (f for f in list_fut_models if f.expiry),
+            (f for f in fut_models_same_underlying if f.expiry),
             key=lambda f: abs((f.expiry - opt.expiry).days),
         )
     except ValueError:

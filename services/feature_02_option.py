@@ -33,7 +33,7 @@ logger = logging.getLogger(__name__)
 logging.Formatter.converter = time_converter
 
 logging.basicConfig(
-   filename=(os.path.join(config("DIR_LOGS", cast=str), "artham_feature_01_option.log")),
+   filename=(os.path.join(config("DIR_LOGS", cast=str), "artham_feature_02_option.log")),
    encoding="utf-8",
    level=logging.DEBUG,
    datefmt="%Y-%m-%d %H:%M:%S %p %Z",
@@ -144,6 +144,57 @@ class OptionEngine:
       self.expiry_helper = EXPIRY()
       self.option_meta: Dict[int, OptionMeta] = {}
       self.price_cache: Dict[int, float] = {}
+      self.future_candidates_cache: Dict[str, list] = {}
+
+   async def _get_future_candidates(self, underlying_symbol: str) -> list:
+      symbol = (underlying_symbol or "").strip().lower()
+      if not symbol:
+         return []
+      if symbol in self.future_candidates_cache:
+         return self.future_candidates_cache[symbol]
+
+      future_ids = await self.redis.sinter(
+         "instruments:segment:nfo-fut",
+         f"instruments:underlying_trading_symbol:{symbol}",
+      )
+
+      candidates = []
+      for fid_raw in future_ids:
+         fid = _to_int(fid_raw)
+         if fid is None:
+            continue
+         fut_hash = await self.redis.hgetall(f"instruments:{fid}")
+         if not fut_hash:
+            continue
+         expiry_str = fut_hash.get("expiry")
+         expiry_val = None
+         if expiry_str:
+            try:
+               expiry_val = datetime.fromisoformat(expiry_str).date()
+            except Exception:
+               expiry_val = None
+         candidates.append((fid, expiry_val))
+
+      self.future_candidates_cache[symbol] = candidates
+      return candidates
+
+   @staticmethod
+   def _pick_future_id_for_option(expiry_val: date, candidates: list) -> Optional[int]:
+      if not candidates:
+         return None
+      with_expiry = [(fid, exp) for fid, exp in candidates if exp is not None]
+      if not with_expiry:
+         return None
+
+      same_month = [
+         (fid, exp) for fid, exp in with_expiry if exp.year == expiry_val.year and exp.month == expiry_val.month
+      ]
+      if same_month:
+         same_month.sort(key=lambda row: row[1])
+         return same_month[0][0]
+
+      with_expiry.sort(key=lambda row: abs((row[1] - expiry_val).days))
+      return with_expiry[0][0]
 
    async def load_option_metadata(self):
       # Reliance universe via new instrument index sets
@@ -153,13 +204,6 @@ class OptionEngine:
             "instruments:segment:nfo-opt", "instruments:underlying_trading_symbol:reliance"
          )
       }
-      fut_ids = {
-         int(t)
-         for t in await self.redis.sinter(
-            "instruments:segment:nfo-fut", "instruments:underlying_trading_symbol:reliance"
-         )
-      }
-
       if not option_ids:
          logger.warning(
             "No option instruments found for Reliance via instruments:segment:nfo-opt ∩ instruments:underlying_trading_symbol:reliance"
@@ -168,6 +212,7 @@ class OptionEngine:
 
       meta: Dict[int, OptionMeta] = {}
       for oid in option_ids:
+         base_data = await self.redis.hgetall(f"instruments:{oid}")
          data = await self.redis.hgetall(f"instruments:opt:{oid}")
          if not data:
             logger.debug("Missing option hash for %s", oid)
@@ -190,12 +235,35 @@ class OptionEngine:
 
          underlying_id = _to_int(data.get("underlying_instrument_id"))
          underlying_fut_id = _to_int(data.get("underlying_future_instrument_id"))
-         if underlying_fut_id and underlying_fut_id not in fut_ids:
-            logger.debug(
-               "Underlying future %s for option %s not in futures set; will likely miss price",
-               underlying_fut_id,
-               oid,
-            )
+         underlying_symbol = (
+            data.get("underlying_trading_symbol")
+            or base_data.get("underlying_trading_symbol")
+            or ""
+         )
+         fut_candidates = await self._get_future_candidates(underlying_symbol)
+         fut_candidate_ids = {fid for fid, _ in fut_candidates}
+
+         if underlying_fut_id and underlying_fut_id not in fut_candidate_ids:
+            fallback_fut_id = self._pick_future_id_for_option(expiry_val, fut_candidates)
+            if fallback_fut_id is not None:
+               logger.warning(
+                  "Option %s had mismatched future id %s for underlying %s; corrected to %s",
+                  oid,
+                  underlying_fut_id,
+                  (underlying_symbol or "").upper(),
+                  fallback_fut_id,
+               )
+               underlying_fut_id = fallback_fut_id
+            else:
+               logger.debug(
+                  "Underlying future %s for option %s not in futures set; will likely miss price",
+                  underlying_fut_id,
+                  oid,
+               )
+         elif underlying_fut_id is None:
+            fallback_fut_id = self._pick_future_id_for_option(expiry_val, fut_candidates)
+            if fallback_fut_id is not None:
+               underlying_fut_id = fallback_fut_id
 
          meta[int(oid)] = OptionMeta(
             instrument_id=int(oid),
@@ -342,7 +410,7 @@ async def worker():
    await init_consumer_groups()
    streams = {STREAM_TICKS: ">"}
    logger.info(
-      "Option Engine ready. group=%s batch_size=%s stream=%s -> %s",
+      "Feature Option ready. group=%s batch_size=%s stream=%s -> %s",
       GROUP_NAME,
       BATCH_SIZE,
       STREAM_TICKS,
