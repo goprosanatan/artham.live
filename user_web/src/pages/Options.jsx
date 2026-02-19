@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import Navigate from "@components/Navigate.jsx";
 import { useAuth } from "@contexts/authProvider.jsx";
 import { requestApi } from "@hooks/requestApi.js";
@@ -53,6 +53,8 @@ const Options = () => {
   const [error, setError] = useState("");
   const [liveByInstrument, setLiveByInstrument] = useState({});
   const [underlyingLastPrice, setUnderlyingLastPrice] = useState(null);
+  const tableContainerRef = useRef(null);
+  const atmRowRef = useRef(null);
 
   useEffect(() => {
     const loadProfile = async () => {
@@ -151,6 +153,23 @@ const Options = () => {
     }
     return best;
   }, [underlyingLastPrice, strikeRows]);
+
+  useEffect(() => {
+    if (atmStrike == null) return;
+    const container = tableContainerRef.current;
+    const atmRow = atmRowRef.current;
+    if (!container || !atmRow) return;
+
+    const targetTop =
+      atmRow.offsetTop - container.clientHeight / 2 + atmRow.clientHeight / 2;
+    const maxScroll = Math.max(0, container.scrollHeight - container.clientHeight);
+    const nextTop = Math.max(0, Math.min(targetTop, maxScroll));
+
+    container.scrollTo({
+      top: nextTop,
+      behavior: "smooth",
+    });
+  }, [atmStrike, selectedExpiry]);
 
   useEffect(() => {
     if (!token || !selectedExpiry) return;
@@ -389,7 +408,7 @@ const Options = () => {
             {loading ? "Loading option chain..." : "No option chain found"}
           </div>
         ) : (
-          <div className="flex-1 min-h-0 overflow-auto">
+          <div ref={tableContainerRef} className="flex-1 min-h-0 overflow-auto">
             <table className="w-full text-xs border-collapse">
               <thead className="sticky top-0 bg-gray-200 dark:bg-gray-800 text-gray-700 dark:text-gray-200">
                 <tr>
@@ -413,6 +432,7 @@ const Options = () => {
               <tbody>
                 {strikeRows.map((row) => (
                   <tr
+                    ref={toNum(row.strike) === atmStrike ? atmRowRef : null}
                     key={`${selectedExpiry}-${row.strike}`}
                     className={`odd:bg-white/55 even:bg-indigo-50/60 hover:bg-yellow-50/70 dark:odd:bg-gray-700/35 dark:even:bg-gray-700/65 dark:hover:bg-gray-600/80 transition-colors ${
                       toNum(row.strike) === atmStrike ? "ring-2 ring-amber-400 dark:ring-amber-500" : ""
@@ -427,9 +447,9 @@ const Options = () => {
                       <div
                         className={`inline-flex min-w-14 items-center justify-center px-1.5 py-0.5 rounded border text-[10px] font-bold ${
                           getCeMoneyness(toNum(row.strike), underlyingLastPrice, atmStrike) === "ITM"
-                            ? "bg-[linear-gradient(135deg,#d1fae5_0%,#d1fae5_48%,#10b981_49%,#10b981_52%,#ecfdf5_53%,#ecfdf5_100%)] border-emerald-300 text-emerald-900 dark:bg-[linear-gradient(135deg,#064e3b_0%,#064e3b_48%,#10b981_49%,#10b981_52%,#022c22_53%,#022c22_100%)] dark:border-emerald-700 dark:text-emerald-100"
+                            ? "bg-emerald-200 border-emerald-400 text-emerald-900 dark:bg-emerald-800 dark:border-emerald-600 dark:text-emerald-100"
                             : getCeMoneyness(toNum(row.strike), underlyingLastPrice, atmStrike) === "OTM"
-                            ? "bg-[linear-gradient(135deg,#ecfdf5_0%,#ecfdf5_48%,#34d399_49%,#34d399_52%,#d1fae5_53%,#d1fae5_100%)] border-emerald-200 text-emerald-700 dark:bg-[linear-gradient(135deg,#022c22_0%,#022c22_48%,#34d399_49%,#34d399_52%,#064e3b_53%,#064e3b_100%)] dark:border-emerald-800 dark:text-emerald-300"
+                            ? "bg-slate-200 border-slate-400 text-slate-800 dark:bg-slate-700 dark:border-slate-500 dark:text-slate-100"
                             : "bg-amber-100 border-amber-300 text-amber-900 dark:bg-amber-900 dark:border-amber-700 dark:text-amber-100"
                         }`}
                       >
@@ -456,9 +476,9 @@ const Options = () => {
                       <div
                         className={`inline-flex min-w-14 items-center justify-center px-1.5 py-0.5 rounded border text-[10px] font-bold ${
                           getPeMoneyness(toNum(row.strike), underlyingLastPrice, atmStrike) === "ITM"
-                            ? "bg-[linear-gradient(135deg,#ffe4e6_0%,#ffe4e6_48%,#f43f5e_49%,#f43f5e_52%,#fff1f2_53%,#fff1f2_100%)] border-rose-300 text-rose-900 dark:bg-[linear-gradient(135deg,#881337_0%,#881337_48%,#f43f5e_49%,#f43f5e_52%,#4c0519_53%,#4c0519_100%)] dark:border-rose-700 dark:text-rose-100"
+                            ? "bg-emerald-200 border-emerald-400 text-emerald-900 dark:bg-emerald-800 dark:border-emerald-600 dark:text-emerald-100"
                             : getPeMoneyness(toNum(row.strike), underlyingLastPrice, atmStrike) === "OTM"
-                            ? "bg-[linear-gradient(135deg,#fff1f2_0%,#fff1f2_48%,#fb7185_49%,#fb7185_52%,#ffe4e6_53%,#ffe4e6_100%)] border-rose-200 text-rose-700 dark:bg-[linear-gradient(135deg,#4c0519_0%,#4c0519_48%,#fb7185_49%,#fb7185_52%,#881337_53%,#881337_100%)] dark:border-rose-800 dark:text-rose-300"
+                            ? "bg-slate-200 border-slate-400 text-slate-800 dark:bg-slate-700 dark:border-slate-500 dark:text-slate-100"
                             : "bg-amber-100 border-amber-300 text-amber-900 dark:bg-amber-900 dark:border-amber-700 dark:text-amber-100"
                         }`}
                       >
