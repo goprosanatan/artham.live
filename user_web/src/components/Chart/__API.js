@@ -66,6 +66,13 @@ export function useChartApi() {
       instrumentDetailInflight.set(cacheKey, fetchPromise);
       return fetchPromise;
     },
+    getDerivatives: async (exchange, underlying_trading_symbol) => {
+      const data = await request("chart/instrument/derivatives", "GET", {
+        exchange,
+        underlying_trading_symbol,
+      });
+      return typeof data === "string" ? JSON.parse(data) : data;
+    },
     getData: async ({
       instrument_id,
       timeframe,

@@ -112,6 +112,36 @@ async def filter_instrument(
     return response
 
 
+# ------------------------------------------------------
+
+
+async def get_derivatives(
+    pg_conn: psycopg.AsyncConnection,
+    exchange: str,
+    underlying_trading_symbol: str,
+):
+    instrument_search = INSTRUMENT_SEARCH_ASYNC(pg_conn=pg_conn)
+    derivatives = await instrument_search.derivatives(
+        exchange=exchange,
+        underlying_trading_symbol=underlying_trading_symbol,
+    )
+
+    options = {}
+    for expiry, strike_map in (derivatives.get("options") or {}).items():
+        options[expiry] = {}
+        for strike, side_map in (strike_map or {}).items():
+            options[expiry][strike] = {}
+            for side, instrument in (side_map or {}).items():
+                options[expiry][strike][side] = instrument.model_dump()
+
+    futures = [item.model_dump() for item in (derivatives.get("futures") or [])]
+
+    return {
+        "options": options,
+        "futures": futures,
+    }
+
+
 # ===================================================================================================
 # BARS and SLOTS
 

@@ -151,6 +151,31 @@ async def instrument_detail(
 
 
 # ==============================================================================
+# DERIVATIVES
+
+
+@router.get("/instrument/derivatives")
+async def instrument_derivatives(
+    exchange: str,
+    underlying_trading_symbol: str,
+    email_id=Depends(auth.verify_access_token),
+    pg_conn=Depends(get_pg_conn),
+):
+
+    payload = await helper.get_derivatives(
+        pg_conn=pg_conn,
+        exchange=exchange,
+        underlying_trading_symbol=underlying_trading_symbol,
+    )
+
+    return JSONResponse(
+        content=json.dumps(payload, default=str),
+        status_code=status.HTTP_200_OK,
+        headers={},
+    )
+
+
+# ==============================================================================
 # CHART DATA
 
 

@@ -3,6 +3,7 @@ import redis.asyncio as redis
 import logging
 import asyncio
 import json
+import re
 from typing import Dict
 from decouple import config
 
@@ -26,6 +27,30 @@ websocket = socketio.AsyncServer(
 
 # Background task handle for fanout service
 _fanout_task = None
+
+NP_FLOAT_WRAPPER_RE = re.compile(r"^np\.float\d+\(([-+0-9.eE]+)\)$")
+
+
+def _parse_float(val):
+    if val is None:
+        return None
+    if isinstance(val, (int, float)):
+        return float(val)
+    if isinstance(val, str):
+        text = val.strip()
+        if not text:
+            return None
+        match = NP_FLOAT_WRAPPER_RE.match(text)
+        if match:
+            text = match.group(1)
+        try:
+            return float(text)
+        except Exception:
+            return None
+    try:
+        return float(val)
+    except Exception:
+        return None
 
 
 async def startup_handler():
@@ -167,6 +192,13 @@ async def _replay_stream_reader(sid: str, sub_type: str, session_id: str, async_
                         },
                         room=sid,
                     )
+                    logger.info(
+                        "[FANOUT][REPLAY] event=bar type=%s session_id=%s sid=%s msg_id=%s",
+                        sub_type,
+                        session_id,
+                        sid,
+                        msg_id,
+                    )
                     last_id = msg_id
     except asyncio.CancelledError:
         logger.info(
@@ -252,6 +284,9 @@ BAR_STREAMS = {
 FEATURE_STREAMS = {
     "feature.equity_depth": config(
         "STREAM_FEATURE_EQUITY", cast=str, default="md:feature:equity"
+    ),
+    "feature.option_chain": config(
+        "STREAM_FEATURE_OPTIONS", cast=str, default="md:feature:options"
     ),
 }
 
@@ -371,20 +406,29 @@ async def websocket_fanout_service(async_redis_pool):
                                 v = value.decode() if isinstance(value, bytes) else value
                                 payload_data[k] = v
 
-                            instrument_id = payload_data.get("instrument_id")
-                            if not instrument_id or instrument_id == "None":
-                                logger.warning(f"Message {msg_id} has invalid instrument_id: {instrument_id}, skipping")
+                            instrument_id_raw = payload_data.get("instrument_id")
+                            if not instrument_id_raw or instrument_id_raw == "None":
+                                logger.warning(f"Message {msg_id} has invalid instrument_id: {instrument_id_raw}, skipping")
                                 await redis_conn.xack(stream_key, FANOUT_CONSUMER_GROUP, msg_id)
                                 continue
 
-                            instrument_id = str(instrument_id)
+                            instrument_id_int = None
+                            try:
+                                instrument_id_int = int(float(instrument_id_raw))
+                            except Exception:
+                                instrument_id_int = None
+
+                            instrument_id = (
+                                str(instrument_id_int)
+                                if instrument_id_int is not None
+                                else str(instrument_id_raw)
+                            )
                             subscribers = await redis_conn.smembers(f"ws:instrument.{sub_type}.{instrument_id}.users")
 
                             if subscribers:
                                 if sub_type.startswith("bars."):
                                     for sid in subscribers:
                                         try:
-                                            print(f"Emitting {sub_type} bar for instrument {instrument_id} to user {sid}")
                                             await websocket.emit(
                                                 "bar",
                                                 {"type": sub_type, "data": payload_data},
@@ -393,8 +437,12 @@ async def websocket_fanout_service(async_redis_pool):
                                         except Exception as e:
                                             logger.error(f"Failed to emit to {sid}: {e}")
 
-                                    logger.debug(
-                                        f"[FANOUT] Sent {sub_type} bar for instrument {instrument_id} to {len(subscribers)} users"
+                                    logger.info(
+                                        "[FANOUT][LIVE] event=bar type=%s instrument_id=%s recipients=%s msg_id=%s",
+                                        sub_type,
+                                        instrument_id,
+                                        len(subscribers),
+                                        msg_id,
                                     )
                                 elif sub_type == "feature.equity_depth":
                                     buy_levels_raw = payload_data.get("buy_levels") or "{}"
@@ -408,12 +456,6 @@ async def websocket_fanout_service(async_redis_pool):
                                     except Exception:
                                         sell_levels_map = {}
 
-                                    def _to_float(val):
-                                        try:
-                                            return float(val)
-                                        except Exception:
-                                            return None
-
                                     def _to_int(val):
                                         try:
                                             return int(float(val))
@@ -423,10 +465,10 @@ async def websocket_fanout_service(async_redis_pool):
                                     def _levels_to_list(levels_map, side):
                                         levels = []
                                         for _, level in levels_map.items():
-                                            price = _to_float(level.get("price"))
+                                            price = _parse_float(level.get("price"))
                                             qty = _to_int(level.get("quantity"))
                                             orders = _to_int(level.get("orders"))
-                                            ratio = _to_float(level.get("ratio"))
+                                            ratio = _parse_float(level.get("ratio"))
                                             if price is None or qty is None:
                                                 continue
                                             levels.append(
@@ -443,7 +485,7 @@ async def websocket_fanout_service(async_redis_pool):
 
                                     depth_payload = {
                                         "instrument_id": instrument_id,
-                                        "last_price": _to_float(payload_data.get("last_price")),
+                                        "last_price": _parse_float(payload_data.get("last_price")),
                                         "exchange_ts": payload_data.get("exchange_ts"),
                                         "ingest_ts": payload_data.get("ingest_ts"),
                                         "buy_levels": _levels_to_list(buy_levels_map, "buy"),
@@ -459,6 +501,57 @@ async def websocket_fanout_service(async_redis_pool):
                                             )
                                         except Exception as e:
                                             logger.error(f"Failed to emit depth to {sid}: {e}")
+                                    logger.info(
+                                        "[FANOUT][LIVE] event=depth type=%s instrument_id=%s recipients=%s msg_id=%s",
+                                        sub_type,
+                                        instrument_id,
+                                        len(subscribers),
+                                        msg_id,
+                                    )
+                                elif sub_type == "feature.option_chain":
+                                    def _to_int(val):
+                                        try:
+                                            return int(float(val))
+                                        except Exception:
+                                            return None
+
+                                    option_payload = {
+                                        "instrument_id": _to_int(payload_data.get("instrument_id")),
+                                        "underlying_instrument_id": _to_int(payload_data.get("underlying_instrument_id")),
+                                        "underlying_future_instrument_id": _to_int(payload_data.get("underlying_future_instrument_id")),
+                                        "option_type": payload_data.get("option_type"),
+                                        "strike": _parse_float(payload_data.get("strike")),
+                                        "expiry": payload_data.get("expiry"),
+                                        "t_days": _parse_float(payload_data.get("t_days")),
+                                        "underlying_price": _parse_float(payload_data.get("underlying_price")),
+                                        "option_price": _parse_float(payload_data.get("option_price")),
+                                        "implied_vol": _parse_float(payload_data.get("implied_vol")),
+                                        "theoretical_price": _parse_float(payload_data.get("theoretical_price")),
+                                        "delta": _parse_float(payload_data.get("delta")),
+                                        "gamma": _parse_float(payload_data.get("gamma")),
+                                        "vega": _parse_float(payload_data.get("vega")),
+                                        "theta": _parse_float(payload_data.get("theta")),
+                                        "rho": _parse_float(payload_data.get("rho")),
+                                        "exchange_ts": payload_data.get("exchange_ts"),
+                                        "ingest_ts": payload_data.get("ingest_ts"),
+                                    }
+
+                                    for sid in subscribers:
+                                        try:
+                                            await websocket.emit(
+                                                "option_feature",
+                                                {"type": sub_type, "data": option_payload},
+                                                room=sid,
+                                            )
+                                        except Exception as e:
+                                            logger.error(f"Failed to emit option_feature to {sid}: {e}")
+                                    logger.info(
+                                        "[FANOUT][LIVE] event=option_feature type=%s instrument_id=%s recipients=%s msg_id=%s",
+                                        sub_type,
+                                        instrument_id,
+                                        len(subscribers),
+                                        msg_id,
+                                    )
 
                             await redis_conn.xack(stream_key, FANOUT_CONSUMER_GROUP, msg_id)
 
@@ -559,12 +652,21 @@ async def websocket_fanout_service(async_redis_pool):
                             manager = websocket.manager
                             rooms = manager.rooms.get("/", {})
                             
+                            emitted_count = 0
                             for sid in rooms.keys():
                                 if sid:  # Skip None or empty SIDs
                                     try:
                                         await websocket.emit("order_event", event_payload, room=sid)
+                                        emitted_count += 1
                                     except Exception as e:
                                         logger.error(f"Failed to emit order_event to {sid}: {e}")
+                            logger.info(
+                                "[FANOUT][LIVE] event=order_event type=%s bracket_id=%s recipients=%s msg_id=%s",
+                                event_type,
+                                bracket_id,
+                                emitted_count,
+                                msg_id,
+                            )
                             
                             await redis_conn.xack(stream_key, ORDER_EVENTS_CONSUMER_GROUP, msg_id)
 
@@ -663,6 +765,12 @@ async def subscribe(sid, data):
     try:
         sub_type = data.get("type")
         instruments = data.get("instruments", [])
+        logger.info(
+            "Websocket -------- Subscribe requested: sid=%s type=%s count=%s",
+            sid,
+            sub_type,
+            len(instruments) if isinstance(instruments, list) else "invalid",
+        )
         
         # Validate subscription type
         if not sub_type or sub_type not in STREAM_SUBSCRIPTIONS:
@@ -697,6 +805,12 @@ async def subscribe(sid, data):
             room=sid
         )
         logger.info(f"Websocket -------- User {sid} subscribed to {len(instruments)} instruments for {sub_type}")
+        if sub_type == "feature.option_chain":
+            logger.info(
+                "Websocket -------- Option chain subscription accepted: sid=%s instruments=%s",
+                sid,
+                instruments[:10],
+            )
         
     except Exception as e:
         logger.error(f"Websocket -------- Subscribe error for {sid}: {e}")
@@ -717,6 +831,12 @@ async def unsubscribe(sid, data):
     try:
         sub_type = data.get("type")
         instruments = data.get("instruments", [])
+        logger.info(
+            "Websocket -------- Unsubscribe requested: sid=%s type=%s count=%s",
+            sid,
+            sub_type,
+            len(instruments) if isinstance(instruments, list) else "invalid",
+        )
         
         # Validate subscription type
         if not sub_type or sub_type not in STREAM_SUBSCRIPTIONS:
@@ -751,6 +871,12 @@ async def unsubscribe(sid, data):
             room=sid
         )
         logger.info(f"Websocket -------- User {sid} unsubscribed from {len(instruments)} instruments for {sub_type}")
+        if sub_type == "feature.option_chain":
+            logger.info(
+                "Websocket -------- Option chain unsubscribe accepted: sid=%s instruments=%s",
+                sid,
+                instruments[:10],
+            )
         
     except Exception as e:
         logger.error(f"Websocket -------- Unsubscribe error for {sid}: {e}")

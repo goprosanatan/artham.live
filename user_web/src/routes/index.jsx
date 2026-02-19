@@ -4,6 +4,7 @@ import { ProtectedRoute } from "@routes/ProtectedRoute.jsx";
 import Login from "@pages/Login.jsx";
 import Dashboard from "@pages/Dashboard.jsx";
 import Replay from "@pages/Replay.jsx";
+import Options from "@pages/Options.jsx";
 import AboutUs from "@pages/AboutUs.jsx";
 import Page404 from "@pages/Page404.jsx";
 
@@ -43,6 +44,10 @@ const AllRoutes = () => {
         {
           path: "replay",
           element: <Replay />,
+        },
+        {
+          path: "options",
+          element: <Options />,
         },
         {
           path: "aboutus",

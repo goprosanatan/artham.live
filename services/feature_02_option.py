@@ -15,6 +15,7 @@ from dataclasses import dataclass
 from datetime import date, datetime
 from decimal import Decimal
 from typing import Dict, Optional
+from numbers import Number, Integral
 
 from decouple import config
 from prometheus_client import Counter, Gauge, Histogram, start_http_server
@@ -105,6 +106,14 @@ def normalize_for_redis(payload: dict) -> dict:
       elif isinstance(v, (datetime, date)):
          out[k] = v.isoformat()
       elif isinstance(v, Decimal):
+         out[k] = float(v)
+      elif isinstance(v, Integral):
+         # Preserve integer identifiers (instrument_id, underlying ids) as ints
+         # so Redis keys align with websocket subscription keys.
+         out[k] = int(v)
+      elif isinstance(v, Number):
+         # Normalize numpy scalar numerics (e.g., np.float64) to native Python
+         # so Redis stores plain numeric strings instead of repr like np.float64(...)
          out[k] = float(v)
       else:
          out[k] = v

@@ -69,6 +69,16 @@ const Navigate = ({ className, profile }) => {
         >
           Replay
         </NavLink>
+        <NavLink
+          to="/options"
+          className={({ isActive }) =>
+            isActive
+              ? "active font-bold text-2xl text-black dark:text-white"
+              : "inactive text-2xl text-black dark:text-white"
+          }
+        >
+          Options
+        </NavLink>
         {/* <NavLink
           to="/dashboard"
           className={({ isActive }) =>
