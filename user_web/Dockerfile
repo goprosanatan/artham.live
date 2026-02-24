@@ -12,6 +12,16 @@ WORKDIR /user_web
 #copy all the folder contents from local to container
 COPY . /user_web/
 
+# Build-time API config for Vite production bundle
+ARG VITE_API_ADDRESS
+ARG VITE_API_PROD_HOST
+ARG VITE_API_PROD_PORT
+ARG VITE_API_PROD_PROTOCOL
+ENV VITE_API_ADDRESS=${VITE_API_ADDRESS}
+ENV VITE_API_PROD_HOST=${VITE_API_PROD_HOST}
+ENV VITE_API_PROD_PORT=${VITE_API_PROD_PORT}
+ENV VITE_API_PROD_PROTOCOL=${VITE_API_PROD_PROTOCOL}
+
 # fix error:0308010C:digital envelope routines
 # RUN export NODE_OPTIONS=--openssl-legacy-provider
 
