@@ -504,21 +504,23 @@ export default function ChartVertical({
 
   // On mount, only fetch segment list (not bars)
   useEffect(() => {
+    if (!token) return;
     async function fetchSegments() {
       const segments = await getSegmentAll();
       setSegmentList(segments);
     }
     fetchSegments();
-  }, []);
+  }, [token]);
 
   // Reload when parent passes a new instrumentId
   useEffect(() => {
+    if (!token) return;
     if (!instrumentId) return;
     const numericId = Number(instrumentId);
     if (!Number.isFinite(numericId)) return;
-    if (numericId === selectedInstrumentId) return;
+    if (numericId === selectedInstrumentId && barData.length > 0) return;
     loadBarsForInstrument(numericId);
-  }, [instrumentId]);
+  }, [token, instrumentId]);
 
   // Websocket lifecycle: establish connection and handle real-time bar updates
   useEffect(() => {

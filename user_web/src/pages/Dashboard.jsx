@@ -79,8 +79,9 @@ const Dashboard = () => {
   };
 
   useEffect(() => {
+    if (!token) return;
     startDashboard();
-  }, []);
+  }, [token]);
 
   const fetchOrders = async () => {
     setOrdersLoading(true);
@@ -96,8 +97,9 @@ const Dashboard = () => {
   };
 
   useEffect(() => {
+    if (!token) return;
     fetchOrders();
-  }, []);
+  }, [token]);
 
   // Live market depth stream for the selected instrument.
   useEffect(() => {

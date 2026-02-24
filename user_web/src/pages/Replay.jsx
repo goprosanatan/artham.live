@@ -4,11 +4,13 @@ import Navigate from "@components/Navigate.jsx";
 import { useReplayApi } from "@components/Chart/__ReplayAPI.js";
 import ChartHorizontal from "@components/Chart/Horizontal.jsx";
 import { useChartApi } from "@components/Chart/__API.js";
+import { useAuth } from "@contexts/authProvider.jsx";
 
 const Replay = () => {
   const { startSession, listSessions, controlSession, deleteSession } =
     useReplayApi();
-  const { filterInstrument, getInstrumentDetail } = useChartApi();
+  const { searchInstrument, getInstrumentDetail } = useChartApi();
+  const { token } = useAuth();
   const [searchParams, setSearchParams] = useSearchParams();
 
   const [sessions, setSessions] = useState([]);
@@ -68,6 +70,7 @@ const Replay = () => {
   };
 
   useEffect(() => {
+    if (!token) return;
     refreshSessions();
 
     // Auto-refresh session list every 1 second to catch status changes (completed, stopped, etc.)
@@ -76,26 +79,35 @@ const Replay = () => {
     }, 100000);
 
     return () => clearInterval(interval);
-  }, []);
+  }, [token]);
 
   const loadInstruments = async () => {
     setInstrumentsLoading(true);
     setInstrumentsError("");
     try {
-      const eqNse = await filterInstrument("NSE", "NSE");
-      const eqBse = await filterInstrument("BSE", "BSE");
-      const relianceEq = [...eqNse, ...eqBse].filter(
-        (i) => i.trading_symbol === "RELIANCE",
+      const baseSymbol = "RELIANCE";
+      const matches = await searchInstrument("", "", baseSymbol, true);
+      const list = Array.isArray(matches) ? matches : [];
+
+      const relianceEq = list.filter(
+        (i) =>
+          i?.trading_symbol === baseSymbol &&
+          ((i?.exchange === "NSE" && i?.segment === "NSE") ||
+            (i?.exchange === "BSE" && i?.segment === "BSE")),
       );
 
-      const fut = await filterInstrument("NFO", "NFO-FUT");
-      const relianceFut = fut.filter(
-        (i) => i.underlying_trading_symbol === "RELIANCE",
+      const relianceFut = list.filter(
+        (i) =>
+          i?.underlying_trading_symbol === baseSymbol &&
+          i?.exchange === "NFO" &&
+          i?.segment === "NFO-FUT",
       );
 
-      const opt = await filterInstrument("NFO", "NFO-OPT");
-      const relianceOpt = opt.filter(
-        (i) => i.underlying_trading_symbol === "RELIANCE",
+      const relianceOpt = list.filter(
+        (i) =>
+          i?.underlying_trading_symbol === baseSymbol &&
+          i?.exchange === "NFO" &&
+          i?.segment === "NFO-OPT",
       );
 
       const combined = [
@@ -123,8 +135,9 @@ const Replay = () => {
   };
 
   useEffect(() => {
+    if (!token) return;
     loadInstruments();
-  }, []);
+  }, [token]);
 
   // Pre-fill form from URL parameters (from chart bar selection)
   useEffect(() => {

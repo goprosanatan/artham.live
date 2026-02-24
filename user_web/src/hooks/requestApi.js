@@ -1,12 +1,13 @@
 import axios from "axios";
 import { useAuth } from "@contexts/authProvider.jsx";
+import { apiAddress } from "@/config/runtime.js";
 
 export function requestApi() {
   const { token } = useAuth(); // token directly from your context
 
   // Create axios instance WITH baseURL
   const instance = axios.create({
-    baseURL: `${env.API_ADDRESS}/`,
+    baseURL: `${apiAddress}/`,
     timeout: 60000,
     responseType: "json",
   });

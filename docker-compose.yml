@@ -450,7 +450,7 @@ services:
       dockerfile: Dockerfile
     image: artham_user_01_api:latest
     container_name: artham_user_01_api
-    command: [ "uvicorn", "main:app", "--host", "0.0.0.0", "--port", "8000" ]
+    command: [ "uvicorn", "main:app", "--host", "0.0.0.0", "--port", "8070" ]
     env_file:
       - ./user_api/.env
     environment:
@@ -465,7 +465,7 @@ services:
       - ./__library:/app/__library:ro
       - logs_data:/logs
     ports:
-      - "8000:8000"
+      - "8070:8070"
     depends_on:
       postgres:
         condition: service_healthy
@@ -480,10 +480,61 @@ services:
       dockerfile: Dockerfile
     image: artham_user_02_web:latest
     container_name: artham_user_02_web
+    expose:
+      - "80"
     ports:
-      - "8080:80"
+      - "${USER_WEB_PORT:-8080}:80"
     depends_on:
       - user_api
+    networks:
+      - artham_net
+
+  certbot:
+    container_name: artham_00_certbot
+    image: certbot/certbot:v2.9.0
+    restart: unless-stopped
+    environment:
+      TZ: Asia/Kolkata
+    volumes:
+      - certbot_conf:/etc/letsencrypt:rw
+      - certbot_lib:/var/lib/letsencrypt:rw
+      - certbot_www:/var/www/certbot:rw
+      - logs_data:/var/log/letsencrypt:rw
+    entrypoint: "/bin/sh -c 'trap exit TERM; while :; do certbot renew; sleep 12h & wait $${!}; done;'"
+    networks:
+      - artham_net
+
+  reverse_proxy:
+    container_name: artham_00_reverse_proxy
+    build:
+      context: .
+      dockerfile: services_web/reverse_proxy.Dockerfile
+    image: artham_00_reverse_proxy:latest
+    restart: unless-stopped
+    volumes:
+      - certbot_conf:/etc/letsencrypt:rw
+      - certbot_www:/var/www/certbot:rw
+      - logs_data:/__logs:rw
+    ports:
+      - "80:80"
+      - "443:443"
+    environment:
+      TZ: Asia/Kolkata
+      PRIMARY_DOMAIN: ${PRIMARY_DOMAIN:-artham.live}
+    depends_on:
+      - user_web
+      - user_api
+      - certbot
+    command: >
+      /bin/sh -c '
+      if [ ! -f /etc/letsencrypt/live/$${PRIMARY_DOMAIN}/fullchain.pem ]; then
+        mkdir -p /etc/letsencrypt/live/$${PRIMARY_DOMAIN};
+        openssl req -x509 -nodes -newkey rsa:2048 -days 1 \
+          -keyout /etc/letsencrypt/live/$${PRIMARY_DOMAIN}/privkey.pem \
+          -out /etc/letsencrypt/live/$${PRIMARY_DOMAIN}/fullchain.pem \
+          -subj "/CN=$${PRIMARY_DOMAIN}";
+      fi;
+      while :; do sleep 6h & wait $${!}; nginx -s reload; done & nginx -g "daemon off;"'
     networks:
       - artham_net
 
@@ -521,6 +572,27 @@ volumes:
       o: bind
       device: ${VOLUMES_BASE_PATH}/grafana
     name: grafana_volume
+  certbot_conf:
+    driver: local
+    driver_opts:
+      type: none
+      o: bind
+      device: ${VOLUMES_BASE_PATH}/certbot/conf
+    name: certbot_conf_volume
+  certbot_lib:
+    driver: local
+    driver_opts:
+      type: none
+      o: bind
+      device: ${VOLUMES_BASE_PATH}/certbot/lib
+    name: certbot_lib_volume
+  certbot_www:
+    driver: local
+    driver_opts:
+      type: none
+      o: bind
+      device: ${VOLUMES_BASE_PATH}/certbot/www
+    name: certbot_www_volume
   logs_data:
     driver: local
     driver_opts:

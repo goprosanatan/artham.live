@@ -579,24 +579,29 @@ export default function ChartHorizontal({
 
   // On mount, only fetch segment list (not bars)
   useEffect(() => {
+    if (!token) return;
     async function fetchSegments() {
       const segments = await getSegmentAll();
       setSegmentList(segments);
     }
     fetchSegments();
-  }, []);
+  }, [token]);
 
   // Reload when parent passes a new instrumentId or when replay session changes
   useEffect(() => {
+    if (!token) return;
     if (!instrumentId) return;
     const numericId = Number(instrumentId);
     if (!Number.isFinite(numericId)) return;
     // In replay mode, always reload even if instrument is the same (timestamp_end changed)
     // In live mode, skip if instrument is already selected
-    const shouldSkip = !replaySessionId && numericId === selectedInstrumentId;
+    const shouldSkip =
+      !replaySessionId &&
+      numericId === selectedInstrumentId &&
+      barData.length > 0;
     if (shouldSkip) return;
     loadBarsForInstrument(numericId);
-  }, [instrumentId, replaySessionId]);
+  }, [token, instrumentId, replaySessionId]);
 
   // Websocket lifecycle: establish connection and handle real-time bar updates
   useEffect(() => {

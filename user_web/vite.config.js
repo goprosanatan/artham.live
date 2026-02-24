@@ -1,10 +1,6 @@
 import { defineConfig } from "vite";
 import react from "@vitejs/plugin-react-swc";
 import path from "path";
-import { config } from "dotenv";
-
-// Load environment variables from .env file
-config();
 
 // https://vite.dev/config/
 export default defineConfig({
@@ -21,9 +17,5 @@ export default defineConfig({
       "@contexts": path.resolve(__dirname, "./src/contexts"),
       "@routes": path.resolve(__dirname, "./src/routes"),
     },
-  },
-  // Use env for environment variables
-  define: {
-    "env": process.env,
   },
 });

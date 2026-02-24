@@ -1,4 +1,5 @@
 import { io } from "socket.io-client";
+import { apiAddress } from "@/config/runtime.js";
 
 // Lightweight wrapper to connect and wire websocket listeners for the chart
 export function connectLive({
@@ -18,7 +19,7 @@ export function connectLive({
 	onSubscriptions,
 	onError,
 } = {}) {
-	const socket = io(`${env.API_ADDRESS}`, {
+	const socket = io(apiAddress, {
 		path: "/websocket",
 		autoConnect: true,
 		transports: ["websocket"],

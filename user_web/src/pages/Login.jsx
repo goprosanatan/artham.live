@@ -4,6 +4,7 @@ import { useAuth } from "@contexts/authProvider.jsx";
 import faviconLogo from "@assets/favicon.ico";
 import axios from "axios";
 import { TextInput, Button } from "flowbite-react";
+import { apiAddress } from "@/config/runtime.js";
 
 const Login = () => {
   const { token, setToken } = useAuth();
@@ -23,7 +24,7 @@ const Login = () => {
       const response = await axios({
         method: "POST",
         url: "/user/login",
-        baseURL: `${env.API_ADDRESS}/`,
+        baseURL: `${apiAddress}/`,
         data: { email_id: email_id, password: password },
         params: {},
         headers: { authorization: token },
