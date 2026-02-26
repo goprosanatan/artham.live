@@ -274,15 +274,126 @@ const Dashboard = () => {
     setSelectedOrder(null);
   };
 
-  const buyLevels = depthSnapshot?.buy_levels || [];
-  const sellLevels = depthSnapshot?.sell_levels || [];
-  const depthRows = Array.from(
-    { length: Math.max(8, buyLevels.length, sellLevels.length) },
-    (_, idx) => ({
-      buy: buyLevels[idx] || null,
-      sell: sellLevels[idx] || null,
-    })
+  const visibleDepthCount = 5;
+  const buyLevels = [...(depthSnapshot?.buy_levels || [])]
+    .slice(0, visibleDepthCount)
+    .sort((a, b) => a.price - b.price);
+  const sellLevels = [...(depthSnapshot?.sell_levels || [])]
+    .slice(0, visibleDepthCount)
+    .sort((a, b) => a.price - b.price);
+
+  const allDepthLevels = [...buyLevels, ...sellLevels];
+  const hasDepthData = allDepthLevels.length > 0;
+  const allDepthPrices = allDepthLevels
+    .map((lvl) => Number(lvl?.price))
+    .filter((price) => Number.isFinite(price));
+  const allDepthQty = allDepthLevels
+    .map((lvl) => Number(lvl?.quantity))
+    .filter((qty) => Number.isFinite(qty) && qty >= 0);
+  const allDepthOrders = allDepthLevels
+    .map((lvl) => Number(lvl?.orders))
+    .filter((orders) => Number.isFinite(orders) && orders >= 0);
+
+  const fallbackPrice = Number(depthSnapshot?.last_price);
+  const rawMinPrice = allDepthPrices.length
+    ? Math.min(...allDepthPrices)
+    : Number.isFinite(fallbackPrice)
+      ? fallbackPrice - 1
+      : 0;
+  const rawMaxPrice = allDepthPrices.length
+    ? Math.max(...allDepthPrices)
+    : Number.isFinite(fallbackPrice)
+      ? fallbackPrice + 1
+      : 1;
+  const singlePricePadding = rawMaxPrice === rawMinPrice ? Math.max(0.5, Math.abs(rawMinPrice) * 0.001) : 0;
+  const minDepthPrice = rawMinPrice - singlePricePadding;
+  const maxDepthPrice = rawMaxPrice + singlePricePadding;
+  const depthPriceRange = Math.max(0.000001, maxDepthPrice - minDepthPrice);
+  const depthQtyMax = Math.max(1, ...allDepthQty);
+  const depthOrdersMax = Math.max(1, ...allDepthOrders);
+
+  const depthChartW = 640;
+  const depthChartH = 232;
+  const depthPadLeft = 52;
+  const depthPadRight = 52;
+  const depthPadTop = 14;
+  const depthPadBottom = 28;
+  const depthPlotW = depthChartW - depthPadLeft - depthPadRight;
+  const depthPlotH = depthChartH - depthPadTop - depthPadBottom;
+
+  const xForDepthPrice = (price) =>
+    depthPadLeft + ((price - minDepthPrice) / depthPriceRange) * depthPlotW;
+  const yForDepthQty = (qty) =>
+    depthPadTop + depthPlotH - (Math.max(0, qty) / depthQtyMax) * depthPlotH;
+  const yForDepthOrders = (orders) =>
+    depthPadTop +
+    depthPlotH -
+    (Math.max(0, orders) / depthOrdersMax) * depthPlotH;
+
+  const buildDepthSeries = (levels, valueSelector, ySelector) => {
+    const points = levels
+      .map((level) => {
+        const price = Number(level?.price);
+        const value = Number(valueSelector(level));
+        if (!Number.isFinite(price) || !Number.isFinite(value)) return null;
+        return { x: xForDepthPrice(price), y: ySelector(value), price };
+      })
+      .filter(Boolean)
+      .sort((a, b) => a.price - b.price);
+
+    const path = points
+      .map((point, idx) => `${idx === 0 ? "M" : "L"} ${point.x} ${point.y}`)
+      .join(" ");
+
+    return { points, path };
+  };
+
+  const buyQtySeries = buildDepthSeries(
+    buyLevels,
+    (level) => level.quantity,
+    yForDepthQty
   );
+  const sellQtySeries = buildDepthSeries(
+    sellLevels,
+    (level) => level.quantity,
+    yForDepthQty
+  );
+  const buyOrdersSeries = buildDepthSeries(
+    buyLevels,
+    (level) => level.orders,
+    yForDepthOrders
+  );
+  const sellOrdersSeries = buildDepthSeries(
+    sellLevels,
+    (level) => level.orders,
+    yForDepthOrders
+  );
+
+  const yTickRatios = [0, 0.25, 0.5, 0.75, 1];
+  const xTickCount = 5;
+  const xDepthTicks = Array.from({ length: xTickCount }, (_, idx) => {
+    if (xTickCount === 1) return minDepthPrice;
+    return minDepthPrice + (depthPriceRange * idx) / (xTickCount - 1);
+  });
+
+  const ltpValue = Number(depthSnapshot?.last_price);
+  const hasDepthLtp =
+    Number.isFinite(ltpValue) &&
+    ltpValue >= minDepthPrice &&
+    ltpValue <= maxDepthPrice;
+  const depthLtpX = xForDepthPrice(ltpValue);
+  const depthLtpLabelAnchor =
+    depthLtpX > depthPadLeft + depthPlotW - 90 ? "end" : "start";
+  const depthLtpLabelX = depthLtpLabelAnchor === "end" ? depthLtpX - 4 : depthLtpX + 4;
+  const formatDepthPrice = (value) =>
+    Number.isFinite(value)
+      ? value.toLocaleString(undefined, {
+          minimumFractionDigits: 2,
+          maximumFractionDigits: 2,
+        })
+      : "--";
+  const formatDepthOrders = (value) =>
+    Number.isFinite(value) ? formatVol(Math.round(Math.max(0, value))) : "--";
 
   return (
     <div className="flex flex-col h-screen p-1 gap-1 dark:bg-gray-500">
@@ -296,54 +407,6 @@ const Dashboard = () => {
             onSelectInstrument={handleInstrumentSelect}
             className="flex-1 min-h-0"
           />
-          <div className="h-64 rounded-lg border border-gray-300 bg-white/70 dark:bg-gray-700 dark:border-gray-600 flex flex-col overflow-hidden">
-            <div className="px-3 py-2 border-b border-gray-300 dark:border-gray-600 flex items-center justify-between">
-              <div className="text-sm font-semibold text-gray-800 dark:text-gray-100">
-                Market Depth
-              </div>
-              <div className="text-[11px] text-gray-600 dark:text-gray-300">
-                {selectedInstrument?.trading_symbol || selectedInstrument?.instrument_id || "--"}
-              </div>
-            </div>
-            <div className="px-3 py-1.5 border-b border-gray-200 dark:border-gray-600 text-xs text-gray-700 dark:text-gray-200">
-              LTP: {Number.isFinite(depthSnapshot?.last_price) ? depthSnapshot.last_price : "--"}
-            </div>
-            <div className="grid grid-cols-2 gap-0 border-b border-gray-200 dark:border-gray-600">
-              <div className="px-2 py-1 text-[11px] font-semibold text-green-700 dark:text-green-300 border-r border-gray-200 dark:border-gray-600">
-                Buy (Qty / Orders)
-              </div>
-              <div className="px-2 py-1 text-[11px] font-semibold text-red-700 dark:text-red-300">
-                Sell (Qty / Orders)
-              </div>
-            </div>
-            <div className="flex-1 overflow-y-auto">
-              {!buyLevels.length && !sellLevels.length ? (
-                <div className="h-full flex items-center justify-center text-xs text-gray-500 dark:text-gray-300">
-                  Waiting for depth updates...
-                </div>
-              ) : (
-                <div className="flex flex-col">
-                  {depthRows.map((row, idx) => (
-                    <div
-                      key={`depth-row-${idx}`}
-                      className="grid grid-cols-2 text-[11px] border-b border-gray-100 dark:border-gray-600"
-                    >
-                      <div className="px-2 py-1 border-r border-gray-100 dark:border-gray-600 text-green-700 dark:text-green-300 tabular-nums">
-                        {row.buy
-                          ? `${formatVol(row.buy.quantity)} / ${Number.isFinite(row.buy.orders) ? Math.trunc(row.buy.orders) : "-"} @ ${row.buy.price}`
-                          : "--"}
-                      </div>
-                      <div className="px-2 py-1 text-red-700 dark:text-red-300 tabular-nums">
-                        {row.sell
-                          ? `${formatVol(row.sell.quantity)} / ${Number.isFinite(row.sell.orders) ? Math.trunc(row.sell.orders) : "-"} @ ${row.sell.price}`
-                          : "--"}
-                      </div>
-                    </div>
-                  ))}
-                </div>
-              )}
-            </div>
-          </div>
         </div>
         <ChartHorizontal
           instrumentId={selectedInstrument.instrument_id}
@@ -363,100 +426,372 @@ const Dashboard = () => {
           onClearOrder={() => setSelectedOrder(null)}
           onOrderSubmitted={fetchOrders}
         /> */}
-        {/* Orders Section - Right Sidebar */}
-        <div className="basis-1/4 rounded-lg border border-gray-300 bg-white/70 dark:bg-gray-700 dark:border-gray-600 flex flex-col overflow-hidden">
-          {/* Header */}
-          <div className="flex items-center justify-between px-3 py-2 border-b border-gray-300 dark:border-gray-600 flex-shrink-0">
-            <h2 className="text-sm font-semibold text-gray-800 dark:text-gray-100">
-              Orders
-            </h2>
-            <div className="flex items-center gap-2">
-              <button
-                type="button"
-                onClick={() => setSelectedOrder(null)}
-                disabled={!selectedOrder}
-                className="px-2 py-1 text-xs font-medium rounded bg-gray-200 text-gray-700 disabled:opacity-60 dark:bg-gray-600 dark:text-gray-100"
-              >
-                Clear
-              </button>
-              <button
-                type="button"
-                onClick={fetchOrders}
-                disabled={ordersLoading}
-                className="px-2 py-1 text-xs font-medium rounded bg-blue-600 text-white disabled:opacity-60"
-              >
-                {ordersLoading ? "Refreshing..." : "Refresh"}
-              </button>
+        <div className="basis-1/5 min-w-0 rounded-lg border border-gray-300 bg-white/70 dark:bg-gray-700 dark:border-gray-600 flex flex-col overflow-hidden">
+          <div className="px-3 py-2 border-b border-gray-300 dark:border-gray-600 flex items-center justify-between">
+            <div className="text-sm font-semibold text-gray-800 dark:text-gray-100">
+              Market Depth
+            </div>
+            <div className="text-[11px] text-gray-600 dark:text-gray-300">
+              {selectedInstrument?.trading_symbol || selectedInstrument?.instrument_id || "--"}
             </div>
           </div>
+          <div className="px-3 py-1.5 border-b border-gray-200 dark:border-gray-600 text-xs text-gray-700 dark:text-gray-200">
+            LTP: {Number.isFinite(depthSnapshot?.last_price) ? depthSnapshot.last_price : "--"}
+          </div>
+          <div className="px-2 py-1 border-b border-gray-200 dark:border-gray-600">
+            <div className="flex flex-wrap items-center gap-x-3 gap-y-1 text-[10px]">
+              <span className="inline-flex items-center gap-1 text-green-700 dark:text-green-300">
+                <span className="h-2 w-2 rounded-full bg-green-600" />
+                Buy Qty
+              </span>
+              <span className="inline-flex items-center gap-1 text-red-700 dark:text-red-300">
+                <span className="h-2 w-2 rounded-full bg-red-600" />
+                Sell Qty
+              </span>
+              <span className="inline-flex items-center gap-1 text-green-700 dark:text-green-300">
+                <span className="h-0.5 w-3 bg-green-500" />
+                Buy Orders
+              </span>
+              <span className="inline-flex items-center gap-1 text-red-700 dark:text-red-300">
+                <span className="h-0.5 w-3 bg-red-400" />
+                Sell Orders
+              </span>
+            </div>
+          </div>
+          <div className="flex-1 min-h-0 p-2">
+            {!hasDepthData ? (
+              <div className="h-full flex items-center justify-center text-xs text-gray-500 dark:text-gray-300">
+                Waiting for depth updates...
+              </div>
+            ) : (
+              <div className="h-full w-full">
+                <svg
+                  viewBox={`0 0 ${depthChartH} ${depthChartW}`}
+                  className="h-full w-full"
+                  preserveAspectRatio="none"
+                >
+                  <g transform={`translate(0 ${depthChartW}) rotate(-90)`}>
+                    <rect
+                      x={depthPadLeft}
+                      y={depthPadTop}
+                      width={depthPlotW}
+                      height={depthPlotH}
+                      fill="transparent"
+                    />
 
-          {/* Filters and Cards Container */}
-          <div className="flex flex-col flex-1 min-h-0">
-            {/* Horizontal Filters */}
-            <div className="flex flex-row gap-2 px-2 py-1.5 border-b border-gray-300 dark:border-gray-600 flex-shrink-0">
-              <button
-                type="button"
-                onClick={() => setOrderFilter("active")}
-                className={`px-2 py-1 text-xs font-medium rounded-full transition-colors whitespace-nowrap ${
-                  orderFilter === "active"
-                    ? "bg-blue-600 text-white"
-                    : "bg-gray-200 text-gray-700 hover:bg-gray-300 dark:bg-gray-600 dark:text-gray-200 dark:hover:bg-gray-500"
-                }`}
-              >
-                Active ({activeCount})
-              </button>
-              <button
-                type="button"
-                onClick={() => setOrderFilter("completed")}
-                className={`px-2 py-1 text-xs font-medium rounded-full transition-colors whitespace-nowrap ${
-                  orderFilter === "completed"
-                    ? "bg-blue-600 text-white"
-                    : "bg-gray-200 text-gray-700 hover:bg-gray-300 dark:bg-gray-600 dark:text-gray-200 dark:hover:bg-gray-500"
-                }`}
-              >
-                Completed ({completedCount})
-              </button>
-              <button
-                type="button"
-                onClick={() => setOrderFilter("all")}
-                className={`px-2 py-1 text-xs font-medium rounded-full transition-colors whitespace-nowrap ${
-                  orderFilter === "all"
-                    ? "bg-blue-600 text-white"
-                    : "bg-gray-200 text-gray-700 hover:bg-gray-300 dark:bg-gray-600 dark:text-gray-200 dark:hover:bg-gray-500"
-                }`}
-              >
-                All ({orders.length})
-              </button>
+                    {yTickRatios.map((ratio) => {
+                      const y = depthPadTop + depthPlotH - ratio * depthPlotH;
+                      return (
+                        <g key={`depth-y-${ratio}`}>
+                          <line
+                            x1={depthPadLeft}
+                            y1={y}
+                            x2={depthPadLeft + depthPlotW}
+                            y2={y}
+                            stroke="#94a3b8"
+                            strokeOpacity="0.35"
+                            strokeWidth="1"
+                          />
+                          <text
+                            x={depthPadLeft - 6}
+                            y={y + 3}
+                            textAnchor="end"
+                            fontSize="10"
+                            fill="#334155"
+                          >
+                            {formatVol(depthQtyMax * ratio)}
+                          </text>
+                          <text
+                            x={depthPadLeft + depthPlotW + 6}
+                            y={y + 3}
+                            textAnchor="start"
+                            fontSize="10"
+                            fill="#334155"
+                          >
+                            {formatDepthOrders(depthOrdersMax * ratio)}
+                          </text>
+                        </g>
+                      );
+                    })}
+
+                    {xDepthTicks.map((price, idx) => {
+                      const x = xForDepthPrice(price);
+                      return (
+                        <g key={`depth-x-${idx}`}>
+                          <line
+                            x1={x}
+                            y1={depthPadTop + depthPlotH}
+                            x2={x}
+                            y2={depthPadTop + depthPlotH + 4}
+                            stroke="#64748b"
+                            strokeWidth="1"
+                          />
+                          <text
+                            x={x}
+                            y={depthPadTop + depthPlotH + 16}
+                            textAnchor="middle"
+                            fontSize="10"
+                            fill="#334155"
+                          >
+                            {formatDepthPrice(price)}
+                          </text>
+                        </g>
+                      );
+                    })}
+
+                    <line
+                      x1={depthPadLeft}
+                      y1={depthPadTop + depthPlotH}
+                      x2={depthPadLeft + depthPlotW}
+                      y2={depthPadTop + depthPlotH}
+                      stroke="#475569"
+                      strokeWidth="1.2"
+                    />
+                    <line
+                      x1={depthPadLeft}
+                      y1={depthPadTop}
+                      x2={depthPadLeft}
+                      y2={depthPadTop + depthPlotH}
+                      stroke="#475569"
+                      strokeWidth="1.2"
+                    />
+                    <line
+                      x1={depthPadLeft + depthPlotW}
+                      y1={depthPadTop}
+                      x2={depthPadLeft + depthPlotW}
+                      y2={depthPadTop + depthPlotH}
+                      stroke="#475569"
+                      strokeWidth="1.2"
+                    />
+
+                    {hasDepthLtp ? (
+                      <g>
+                        <line
+                          x1={depthLtpX}
+                          y1={depthPadTop}
+                          x2={depthLtpX}
+                          y2={depthPadTop + depthPlotH}
+                          stroke="#0f172a"
+                          strokeWidth="1"
+                          strokeDasharray="4 4"
+                          strokeOpacity="0.7"
+                        />
+                        <text
+                          x={depthLtpLabelX}
+                          y={depthPadTop + 10}
+                          textAnchor={depthLtpLabelAnchor}
+                          fontSize="10"
+                          fill="#0f172a"
+                        >
+                          LTP {formatDepthPrice(ltpValue)}
+                        </text>
+                      </g>
+                    ) : null}
+
+                    {buyQtySeries.path ? (
+                      <path
+                        d={buyQtySeries.path}
+                        fill="none"
+                        stroke="#16a34a"
+                        strokeWidth="2.2"
+                      />
+                    ) : null}
+                    {sellQtySeries.path ? (
+                      <path
+                        d={sellQtySeries.path}
+                        fill="none"
+                        stroke="#dc2626"
+                        strokeWidth="2.2"
+                      />
+                    ) : null}
+                    {buyOrdersSeries.path ? (
+                      <path
+                        d={buyOrdersSeries.path}
+                        fill="none"
+                        stroke="#22c55e"
+                        strokeWidth="1.8"
+                        strokeDasharray="5 4"
+                      />
+                    ) : null}
+                    {sellOrdersSeries.path ? (
+                      <path
+                        d={sellOrdersSeries.path}
+                        fill="none"
+                        stroke="#f87171"
+                        strokeWidth="1.8"
+                        strokeDasharray="5 4"
+                      />
+                    ) : null}
+
+                    {buyQtySeries.points.map((point, idx) => (
+                      <circle
+                        key={`bq-point-${idx}`}
+                        cx={point.x}
+                        cy={point.y}
+                        r="2.3"
+                        fill="#16a34a"
+                      />
+                    ))}
+                    {sellQtySeries.points.map((point, idx) => (
+                      <circle
+                        key={`sq-point-${idx}`}
+                        cx={point.x}
+                        cy={point.y}
+                        r="2.3"
+                        fill="#dc2626"
+                      />
+                    ))}
+                    {buyOrdersSeries.points.map((point, idx) => (
+                      <circle
+                        key={`bo-point-${idx}`}
+                        cx={point.x}
+                        cy={point.y}
+                        r="2"
+                        fill="#ffffff"
+                        stroke="#22c55e"
+                        strokeWidth="1.3"
+                      />
+                    ))}
+                    {sellOrdersSeries.points.map((point, idx) => (
+                      <circle
+                        key={`so-point-${idx}`}
+                        cx={point.x}
+                        cy={point.y}
+                        r="2"
+                        fill="#ffffff"
+                        stroke="#f87171"
+                        strokeWidth="1.3"
+                      />
+                    ))}
+
+                    <text
+                      x={depthPadLeft}
+                      y={10}
+                      textAnchor="start"
+                      fontSize="10"
+                      fill="#334155"
+                    >
+                      Quantity (Left Y)
+                    </text>
+                    <text
+                      x={depthPadLeft + depthPlotW}
+                      y={10}
+                      textAnchor="end"
+                      fontSize="10"
+                      fill="#334155"
+                    >
+                      Orders (Right Y)
+                    </text>
+                    <text
+                      x={depthPadLeft + depthPlotW / 2}
+                      y={depthChartH - 4}
+                      textAnchor="middle"
+                      fontSize="10"
+                      fill="#334155"
+                    >
+                      Price (Ascending X)
+                    </text>
+                  </g>
+                </svg>
+              </div>
+            )}
+          </div>
+        </div>
+        <div className="basis-1/4 min-w-0 flex flex-col gap-1">
+          {/* Orders Section - Right Sidebar */}
+          <div className="flex-1 min-h-0 rounded-lg border border-gray-300 bg-white/70 dark:bg-gray-700 dark:border-gray-600 flex flex-col overflow-hidden">
+            {/* Header */}
+            <div className="flex items-center justify-between px-3 py-2 border-b border-gray-300 dark:border-gray-600 flex-shrink-0">
+              <h2 className="text-sm font-semibold text-gray-800 dark:text-gray-100">
+                Orders
+              </h2>
+              <div className="flex items-center gap-2">
+                <button
+                  type="button"
+                  onClick={() => setSelectedOrder(null)}
+                  disabled={!selectedOrder}
+                  className="px-2 py-1 text-xs font-medium rounded bg-gray-200 text-gray-700 disabled:opacity-60 dark:bg-gray-600 dark:text-gray-100"
+                >
+                  Clear
+                </button>
+                <button
+                  type="button"
+                  onClick={fetchOrders}
+                  disabled={ordersLoading}
+                  className="px-2 py-1 text-xs font-medium rounded bg-blue-600 text-white disabled:opacity-60"
+                >
+                  {ordersLoading ? "Refreshing..." : "Refresh"}
+                </button>
+              </div>
             </div>
 
-            {/* Vertical Scrolling Cards */}
-            <div className="flex-1 overflow-y-auto min-w-0">
-              {ordersError ? (
-                <div className="px-3 py-4 text-sm text-red-600 dark:text-red-400">
-                  {ordersError}
-                </div>
-              ) : filteredOrders.length === 0 ? (
-                <div className="px-3 py-4 text-sm text-gray-600 dark:text-gray-400">
-                  No orders yet
-                </div>
-              ) : (
-                <div className="flex flex-col gap-2 p-2">
-                  {filteredOrders.map((order) => {
-                    const symbol =
-                      order.symbol ||
-                      order.trading_symbol ||
-                      order.instrument_id ||
-                      "--";
-                    const rowKey =
-                      order.bracket_id ||
-                      order.stream_id ||
-                      `${symbol}-${order.created_at || order.state || order.command}`;
-                    const isSelected =
-                      (selectedOrder?.bracket_id &&
-                        selectedOrder.bracket_id === order.bracket_id) ||
-                      (selectedOrder?.stream_id &&
-                        selectedOrder.stream_id === order.stream_id);
-                    const currentState = getState(order);
+            {/* Filters and Cards Container */}
+            <div className="flex flex-col flex-1 min-h-0">
+              {/* Horizontal Filters */}
+              <div className="flex flex-row gap-2 px-2 py-1.5 border-b border-gray-300 dark:border-gray-600 flex-shrink-0">
+                <button
+                  type="button"
+                  onClick={() => setOrderFilter("active")}
+                  className={`px-2 py-1 text-xs font-medium rounded-full transition-colors whitespace-nowrap ${
+                    orderFilter === "active"
+                      ? "bg-blue-600 text-white"
+                      : "bg-gray-200 text-gray-700 hover:bg-gray-300 dark:bg-gray-600 dark:text-gray-200 dark:hover:bg-gray-500"
+                  }`}
+                >
+                  Active ({activeCount})
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setOrderFilter("completed")}
+                  className={`px-2 py-1 text-xs font-medium rounded-full transition-colors whitespace-nowrap ${
+                    orderFilter === "completed"
+                      ? "bg-blue-600 text-white"
+                      : "bg-gray-200 text-gray-700 hover:bg-gray-300 dark:bg-gray-600 dark:text-gray-200 dark:hover:bg-gray-500"
+                  }`}
+                >
+                  Completed ({completedCount})
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setOrderFilter("all")}
+                  className={`px-2 py-1 text-xs font-medium rounded-full transition-colors whitespace-nowrap ${
+                    orderFilter === "all"
+                      ? "bg-blue-600 text-white"
+                      : "bg-gray-200 text-gray-700 hover:bg-gray-300 dark:bg-gray-600 dark:text-gray-200 dark:hover:bg-gray-500"
+                  }`}
+                >
+                  All ({orders.length})
+                </button>
+              </div>
+
+              {/* Vertical Scrolling Cards */}
+              <div className="flex-1 overflow-y-auto min-w-0">
+                {ordersError ? (
+                  <div className="px-3 py-4 text-sm text-red-600 dark:text-red-400">
+                    {ordersError}
+                  </div>
+                ) : filteredOrders.length === 0 ? (
+                  <div className="px-3 py-4 text-sm text-gray-600 dark:text-gray-400">
+                    No orders yet
+                  </div>
+                ) : (
+                  <div className="flex flex-col gap-2 p-2">
+                    {filteredOrders.map((order) => {
+                      const symbol =
+                        order.symbol ||
+                        order.trading_symbol ||
+                        order.instrument_id ||
+                        "--";
+                      const rowKey =
+                        order.bracket_id ||
+                        order.stream_id ||
+                        `${symbol}-${order.created_at || order.state || order.command}`;
+                      const isSelected =
+                        (selectedOrder?.bracket_id &&
+                          selectedOrder.bracket_id === order.bracket_id) ||
+                        (selectedOrder?.stream_id &&
+                          selectedOrder.stream_id === order.stream_id);
+                      const currentState = getState(order);
                     
                     // Parse state transitions from backend
                     let stateHistory = [];
@@ -493,24 +828,24 @@ const Dashboard = () => {
                       statesSectionBgClass = "bg-red-300 dark:bg-red-900";
                     }
 
-                    return (
-                      <div
-                        key={rowKey}
-                        onClick={() => {
-                          setSelectedOrder(order);
-                          if (order.instrument_id) {
-                            setSelectedInstrument({
-                              instrument_id: String(order.instrument_id),
-                              trading_symbol: symbol,
-                            });
-                          }
-                        }}
-                        className={`p-2.5 rounded-lg border-2 cursor-pointer transition-all flex-shrink-0 ${
-                          isSelected
-                            ? "border-blue-600 bg-blue-50 dark:bg-blue-950 dark:border-blue-500"
-                            : "border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-800 hover:border-gray-400 dark:hover:border-gray-500"
-                        }`}
-                      >
+                      return (
+                        <div
+                          key={rowKey}
+                          onClick={() => {
+                            setSelectedOrder(order);
+                            if (order.instrument_id) {
+                              setSelectedInstrument({
+                                instrument_id: String(order.instrument_id),
+                                trading_symbol: symbol,
+                              });
+                            }
+                          }}
+                          className={`p-2.5 rounded-lg border-2 cursor-pointer transition-all flex-shrink-0 ${
+                            isSelected
+                              ? "border-blue-600 bg-blue-50 dark:bg-blue-950 dark:border-blue-500"
+                              : "border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-800 hover:border-gray-400 dark:hover:border-gray-500"
+                          }`}
+                        >
                         {/* Card Header */}
                         <div className="flex items-center justify-between mb-1.5">
                           <span className="flex items-center gap-1.5 font-semibold text-sm text-gray-900 dark:text-gray-100">
@@ -644,13 +979,15 @@ const Dashboard = () => {
                             ) : null}
                           </div>
                         </div>
-                      </div>
-                    );
-                  })}
-                </div>
-              )}
+                        </div>
+                      );
+                    })}
+                  </div>
+                )}
+              </div>
             </div>
           </div>
+
         </div>
       </div>
       {/* <Panel className="basis-1/5" /> */}
