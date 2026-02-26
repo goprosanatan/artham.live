@@ -368,6 +368,19 @@ const Dashboard = () => {
     (level) => level.orders,
     yForDepthOrders
   );
+  const quantityBaseY = depthPadTop + depthPlotH;
+  const qtyPointXs = [...buyQtySeries.points, ...sellQtySeries.points]
+    .map((point) => point.x)
+    .sort((a, b) => a - b);
+  let qtyMinGapPx = depthPlotW;
+  for (let i = 1; i < qtyPointXs.length; i += 1) {
+    const gap = qtyPointXs[i] - qtyPointXs[i - 1];
+    if (gap > 0) qtyMinGapPx = Math.min(qtyMinGapPx, gap);
+  }
+  if (!Number.isFinite(qtyMinGapPx) || qtyMinGapPx <= 0) {
+    qtyMinGapPx = depthPlotW / Math.max(1, qtyPointXs.length || 1);
+  }
+  const qtyBarWidth = Math.max(4, Math.min(16, qtyMinGapPx * 0.55));
 
   const yTickRatios = [0, 0.25, 0.5, 0.75, 1];
   const xTickCount = 5;
@@ -441,11 +454,11 @@ const Dashboard = () => {
           <div className="px-2 py-1 border-b border-gray-200 dark:border-gray-600">
             <div className="flex flex-wrap items-center gap-x-3 gap-y-1 text-[10px]">
               <span className="inline-flex items-center gap-1 text-green-700 dark:text-green-300">
-                <span className="h-2 w-2 rounded-full bg-green-600" />
+                <span className="h-2 w-3 rounded-sm bg-green-500" />
                 Buy Qty
               </span>
               <span className="inline-flex items-center gap-1 text-red-700 dark:text-red-300">
-                <span className="h-2 w-2 rounded-full bg-red-600" />
+                <span className="h-2 w-3 rounded-sm bg-red-500" />
                 Sell Qty
               </span>
               <span className="inline-flex items-center gap-1 text-green-700 dark:text-green-300">
@@ -588,22 +601,28 @@ const Dashboard = () => {
                       </g>
                     ) : null}
 
-                    {buyQtySeries.path ? (
-                      <path
-                        d={buyQtySeries.path}
-                        fill="none"
-                        stroke="#16a34a"
-                        strokeWidth="2.2"
+                    {buyQtySeries.points.map((point, idx) => (
+                      <rect
+                        key={`bq-bar-${idx}`}
+                        x={point.x - qtyBarWidth / 2}
+                        y={point.y}
+                        width={qtyBarWidth}
+                        height={Math.max(1, quantityBaseY - point.y)}
+                        fill="#16a34a"
+                        fillOpacity="0.35"
                       />
-                    ) : null}
-                    {sellQtySeries.path ? (
-                      <path
-                        d={sellQtySeries.path}
-                        fill="none"
-                        stroke="#dc2626"
-                        strokeWidth="2.2"
+                    ))}
+                    {sellQtySeries.points.map((point, idx) => (
+                      <rect
+                        key={`sq-bar-${idx}`}
+                        x={point.x - qtyBarWidth / 2}
+                        y={point.y}
+                        width={qtyBarWidth}
+                        height={Math.max(1, quantityBaseY - point.y)}
+                        fill="#dc2626"
+                        fillOpacity="0.35"
                       />
-                    ) : null}
+                    ))}
                     {buyOrdersSeries.path ? (
                       <path
                         d={buyOrdersSeries.path}
@@ -623,24 +642,6 @@ const Dashboard = () => {
                       />
                     ) : null}
 
-                    {buyQtySeries.points.map((point, idx) => (
-                      <circle
-                        key={`bq-point-${idx}`}
-                        cx={point.x}
-                        cy={point.y}
-                        r="2.3"
-                        fill="#16a34a"
-                      />
-                    ))}
-                    {sellQtySeries.points.map((point, idx) => (
-                      <circle
-                        key={`sq-point-${idx}`}
-                        cx={point.x}
-                        cy={point.y}
-                        r="2.3"
-                        fill="#dc2626"
-                      />
-                    ))}
                     {buyOrdersSeries.points.map((point, idx) => (
                       <circle
                         key={`bo-point-${idx}`}
